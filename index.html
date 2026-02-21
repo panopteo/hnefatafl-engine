@@ -9,13 +9,13 @@
       color-scheme: dark;
       --bg: #070a11;
       --panel: #0f1624;
-      --panel-border: rgba(255, 255, 255, 0.04);
+      --panel-border: rgba(255, 255, 255, 0.05);
       --accent: #8ad0ff;
       --accent-strong: #58a6ff;
       --text: #f4f7ff;
       --muted: #96a3ba;
-      --board-light: #f0d9b5;
-      --board-dark: #b58863;
+      --board-bright: #f5e3c0;
+      --board-special: #8d623b;
       --attacker: #1c1d21;
       --defender: #fdfcfa;
       --king: #f4c95d;
@@ -23,6 +23,7 @@
       --last-move-from: rgba(88, 134, 255, 0.45);
       --last-move-to: rgba(234, 197, 119, 0.6);
       --capture-flash: rgba(255, 116, 116, 0.5);
+      --toast-bg: rgba(8, 11, 18, 0.92);
       font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
     }
 
@@ -52,22 +53,114 @@
       width: min(1200px, 100%);
       display: grid;
       gap: 1.5rem;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+
+    .panel {
+      background: var(--panel);
+      border-radius: 1.25rem;
+      padding: 1.25rem;
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
     }
 
     .board-panel {
       grid-column: span 2;
-      background: var(--panel);
-      border-radius: 1.35rem;
       padding: 1.75rem;
-      border: 1px solid var(--panel-border);
-      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.45);
     }
 
     .toolbar {
       display: flex;
       gap: 1.25rem;
       flex-wrap: wrap;
+    }
+
+    .controls,
+    .status {
+      flex: 1;
+      min-width: 230px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .controls label,
+    .status p,
+    .telemetry label {
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    select,
+    .primary-btn,
+    .ghost-btn {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border-radius: 0.85rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+
+    .primary-btn:hover,
+    .ghost-btn:hover,
+    select:focus-visible {
+      background: rgba(138, 208, 255, 0.18);
+      transform: translateY(-1px);
+    }
+
+    .ghost-btn {
+      width: auto;
+      padding: 0.65rem 0.9rem;
+      font-size: 0.9rem;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .toggle-row input[type="checkbox"] {
+      width: 1.15rem;
+      height: 1.15rem;
+      accent-color: var(--accent-strong);
+    }
+
+    .status .badge {
+      padding: 0.4rem 0.9rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      width: fit-content;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .badge.attackers {
+      background: rgba(28, 29, 33, 0.45);
+      color: #f2f4ff;
+    }
+
+    .badge.defenders {
+      background: rgba(253, 252, 250, 0.12);
+      color: var(--defender);
+      border-color: rgba(253, 252, 250, 0.2);
+    }
+
+    .status .message {
+      font-size: 1rem;
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 2.5rem;
     }
 
     .board-wrapper {
@@ -103,21 +196,14 @@
       aspect-ratio: 1;
       padding: 0;
       transition: transform 140ms ease, box-shadow 140ms ease;
-      background-size: cover;
     }
 
-    .cell-light {
-      background: var(--board-light);
+    .cell-bright {
+      background: var(--board-bright);
     }
 
-    .cell-light::after,
-    .cell-dark::after,
-    .cell::before {
-      pointer-events: none;
-    }
-
-    .cell-dark {
-      background: var(--board-dark);
+    .cell-special {
+      background: var(--board-special);
     }
 
     .cell:focus-visible {
@@ -140,6 +226,7 @@
       border-radius: 0.45rem;
       opacity: 0;
       transition: opacity 160ms ease;
+      pointer-events: none;
     }
 
     .cell.last-move-from::before {
@@ -165,6 +252,7 @@
       border-radius: 50%;
       box-shadow: 0 0 12px rgba(138, 208, 255, 0.8);
       opacity: 0.85;
+      pointer-events: none;
     }
 
     .piece {
@@ -178,7 +266,6 @@
       font-size: clamp(0.85rem, 1.8vw, 1.2rem);
       letter-spacing: 0.02em;
       pointer-events: none;
-      transition: filter 160ms ease;
     }
 
     .piece.attacker {
@@ -208,10 +295,10 @@
       position: absolute;
       bottom: 1rem;
       left: 50%;
-      transform: translate(-50%, 150%);
+      transform: translate(-50%, 140%);
       padding: 0.55rem 1.2rem;
       border-radius: 999px;
-      background: rgba(8, 11, 18, 0.9);
+      background: var(--toast-bg);
       border: 1px solid rgba(255, 255, 255, 0.08);
       font-size: 0.9rem;
       font-weight: 600;
@@ -224,79 +311,6 @@
     .capture-toast.visible {
       opacity: 1;
       transform: translate(-50%, 0);
-    }
-
-    .controls,
-    .status,
-    .transcript {
-      background: var(--panel);
-      border-radius: 1.25rem;
-      padding: 1.25rem;
-      border: 1px solid var(--panel-border);
-      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
-    }
-
-    .controls label,
-    .status p {
-      display: block;
-      margin-bottom: 0.5rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-size: 0.75rem;
-    }
-
-    .controls select,
-    .controls button {
-      width: 100%;
-      padding: 0.85rem 1rem;
-      border-radius: 0.85rem;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.04);
-      color: var(--text);
-      font-weight: 600;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: background 120ms ease, transform 120ms ease;
-    }
-
-    .controls button:hover,
-    .controls select:focus-visible {
-      background: rgba(138, 208, 255, 0.18);
-      transform: translateY(-1px);
-    }
-
-    .status {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .status .badge {
-      padding: 0.4rem 0.9rem;
-      border-radius: 999px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      text-transform: capitalize;
-      width: fit-content;
-    }
-
-    .badge.attackers {
-      background: rgba(28, 29, 33, 0.4);
-      color: #f2f4ff;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .badge.defenders {
-      background: rgba(253, 252, 250, 0.1);
-      color: var(--defender);
-      border: 1px solid rgba(253, 252, 250, 0.2);
-    }
-
-    .status .message {
-      font-size: 1rem;
-      color: var(--text);
-      line-height: 1.5;
     }
 
     .transcript {
@@ -343,6 +357,50 @@
       font-weight: 600;
     }
 
+    .telemetry {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+
+    .telemetry h2 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .telemetry-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .log-viewer {
+      width: 100%;
+      min-height: 200px;
+      border-radius: 0.85rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(0, 0, 0, 0.25);
+      color: var(--text);
+      padding: 0.75rem;
+      font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+      font-size: 0.85rem;
+      resize: vertical;
+    }
+
+    .telemetry-note,
+    .test-status {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .test-status.good {
+      color: #7ee787;
+    }
+
+    .test-status.bad {
+      color: #ff7b72;
+    }
+
     @media (max-width: 900px) {
       .board-panel {
         grid-column: span 1;
@@ -362,21 +420,31 @@
 <body>
   <h1>Hnefatafl Engine · Copenhagen Rules</h1>
   <div class="app-shell">
-    <section class="board-panel">
+    <section class="panel board-panel">
       <div class="toolbar">
-        <div class="controls" style="flex:1; min-width:220px;">
-          <label for="sideSelect">Play as</label>
-          <select id="sideSelect">
-            <option value="defenders">Defenders (White)</option>
-            <option value="attackers">Attackers (Black)</option>
-          </select>
-          <button id="restartBtn" style="margin-top:0.75rem;">Restart Game</button>
+        <div class="controls">
+          <div>
+            <label for="sideSelect">Play as</label>
+            <select id="sideSelect">
+              <option value="defenders">Defenders (White)</option>
+              <option value="attackers">Attackers (Black)</option>
+            </select>
+          </div>
+          <button class="primary-btn" id="restartBtn">Restart Game</button>
+          <div class="toggle-row">
+            <input type="checkbox" id="exitFortToggle" />
+            <span>Exit Fort win (experimental)</span>
+          </div>
         </div>
-        <div class="status" style="flex:1; min-width:220px;">
-          <p>Current Turn</p>
-          <span id="turnBadge" class="badge attackers">Attackers</span>
-          <p>Game State</p>
-          <div id="statusMessage" class="message">Attackers to move.</div>
+        <div class="status">
+          <div>
+            <p>Current Turn</p>
+            <span id="turnBadge" class="badge attackers">Attackers</span>
+          </div>
+          <div>
+            <p>Game State</p>
+            <div id="statusMessage" class="message">Attackers to move.</div>
+          </div>
         </div>
       </div>
       <div class="board-wrapper">
@@ -384,9 +452,24 @@
         <div id="captureToast" class="capture-toast" aria-live="assertive"></div>
       </div>
     </section>
-    <section class="transcript" aria-live="polite" aria-label="Move transcript">
+
+    <section class="panel transcript" aria-live="polite" aria-label="Move transcript">
       <h2 style="margin-top:0; font-size:1.1rem;">Move List</h2>
       <div id="moves"></div>
+    </section>
+
+    <section class="panel telemetry">
+      <h2>Diagnostics & Logs</h2>
+      <div class="telemetry-actions">
+        <button class="ghost-btn" id="refreshLogsBtn">Refresh view</button>
+        <button class="ghost-btn" id="downloadJsonBtn">Download JSON</button>
+        <button class="ghost-btn" id="downloadCsvBtn">Download CSV</button>
+        <button class="ghost-btn" id="clearLogsBtn">Clear logs</button>
+        <button class="ghost-btn" id="copyBugBtn">Copy bug report</button>
+      </div>
+      <div id="testStatus" class="test-status">Regression tests pending…</div>
+      <textarea id="logViewer" class="log-viewer" readonly></textarea>
+      <div id="telemetryNote" class="telemetry-note">No game logs yet.</div>
     </section>
   </div>
 
@@ -405,11 +488,13 @@
       DEFENDERS: 'defenders'
     });
 
+    const DEFAULT_CONFIG = Object.freeze({ exitFortEnabled: false });
+    const STORAGE_KEY = 'hnefataflGameLogs';
+
     const restrictedSquares = new Set([
       `${CENTER},${CENTER}`,
       `0,0`, `0,${SIZE - 1}`, `${SIZE - 1},0`, `${SIZE - 1},${SIZE - 1}`
     ]);
-
     const throneKey = `${CENTER},${CENTER}`;
 
     const directions = [
@@ -419,18 +504,29 @@
       [0, -1]
     ];
 
+    // Elements
     const boardEl = document.getElementById('board');
     const movesEl = document.getElementById('moves');
     const restartBtn = document.getElementById('restartBtn');
     const sideSelect = document.getElementById('sideSelect');
+    const exitFortToggle = document.getElementById('exitFortToggle');
     const statusMessage = document.getElementById('statusMessage');
     const turnBadge = document.getElementById('turnBadge');
     const captureToast = document.getElementById('captureToast');
+    const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+    const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const clearLogsBtn = document.getElementById('clearLogsBtn');
+    const copyBugBtn = document.getElementById('copyBugBtn');
+    const logViewer = document.getElementById('logViewer');
+    const telemetryNote = document.getElementById('telemetryNote');
+    const testStatusEl = document.getElementById('testStatus');
 
     const cellRefs = new Map();
     const piecePool = new Map();
     let captureToastTimeoutId = null;
     let captureFlashTimeoutId = null;
+    let storedGames = loadStoredGames();
     let state = {};
 
     function cloneBoard(board) {
@@ -788,7 +884,7 @@
       return moves;
     }
 
-    function determineWin(board) {
+    function determineWin(board, config = DEFAULT_CONFIG) {
       const kingPos = locateKing(board);
       if (!kingPos) {
         return { winner: Side.ATTACKERS, reason: 'King captured • attackers win' };
@@ -796,7 +892,7 @@
       if (isCorner(...kingPos)) {
         return { winner: Side.DEFENDERS, reason: 'King reached a corner • defenders win' };
       }
-      if (defendersExitFort(board)) {
+      if (config.exitFortEnabled && defendersExitFort(board)) {
         return { winner: Side.DEFENDERS, reason: 'Exit fort established • defenders win' };
       }
       if (defendersEncircled(board)) {
@@ -815,6 +911,20 @@
       return board.map(row => row.join('')).join('|');
     }
 
+    function notation([r, c]) {
+      return String.fromCharCode(65 + c) + (SIZE - r);
+    }
+
+    function parseNotation(token) {
+      const col = token.charCodeAt(0) - 65;
+      const row = SIZE - parseInt(token.slice(1), 10);
+      return [row, col];
+    }
+
+    function encodeBoard(board) {
+      return board.map(row => row.join('')).join('/');
+    }
+
     function updateStatus(text, side) {
       statusMessage.textContent = text;
       turnBadge.textContent = side.charAt(0).toUpperCase() + side.slice(1);
@@ -828,7 +938,8 @@
         for (let c = 0; c < SIZE; c++) {
           const cellBtn = document.createElement('button');
           cellBtn.type = 'button';
-          cellBtn.className = `cell ${(r + c) % 2 === 0 ? 'cell-light' : 'cell-dark'}`;
+          const special = isCorner(r, c) || coordKey(r, c) === throneKey;
+          cellBtn.className = `cell ${special ? 'cell-special' : 'cell-bright'}`;
           cellBtn.dataset.row = r;
           cellBtn.dataset.col = c;
           cellBtn.setAttribute('aria-label', `Square ${notation([r, c])}`);
@@ -893,8 +1004,6 @@
 
           if (pieceEl.parentElement !== cellBtn) {
             cellBtn.appendChild(pieceEl);
-          } else {
-            cellBtn.appendChild(pieceEl);
           }
 
           if (prevPositions && prevPositions.has(pieceId)) {
@@ -931,16 +1040,13 @@
         sideEl.textContent = entry.side;
         const descEl = document.createElement('span');
         descEl.className = 'move-description';
-        descEl.textContent = `${notation(entry.from)} → ${notation(entry.to)}${entry.captureSummary ? ' (' + entry.captureSummary + ')' : ''}`;
+        const captureSuffix = entry.captureSummary ? ` (${entry.captureSummary})` : '';
+        descEl.textContent = `${notation(entry.from)} → ${notation(entry.to)}${captureSuffix}`;
         textEl.append(sideEl, descEl);
         row.append(idxEl, textEl);
         movesEl.appendChild(row);
       });
       movesEl.scrollTop = movesEl.scrollHeight;
-    }
-
-    function notation([r, c]) {
-      return String.fromCharCode(65 + c) + (SIZE - r);
     }
 
     function setHighlight(from, legal) {
@@ -997,7 +1103,7 @@
       captureToast.classList.add('visible');
       captureToastTimeoutId = setTimeout(() => {
         captureToast.classList.remove('visible');
-      }, 2000);
+      }, 2200);
     }
 
     function setCaptureFlash(captured) {
@@ -1039,7 +1145,11 @@
       const repKey = repetitionKey(state.board);
       state.historyKeys.push(repKey);
       const captureSummary = captured.length ? `${captured.length} captured` : '';
-      state.moveHistory.push({ ...move, captureSummary });
+      state.moveHistory.push({
+        ...move,
+        captureSummary,
+        capturedPieces: captured.map(entry => ({ piece: entry.piece, location: notation([entry.r, entry.c]) }))
+      });
 
       renderBoard(prevPositions);
       renderMoves();
@@ -1051,7 +1161,7 @@
         return;
       }
 
-      const winResult = determineWin(state.board);
+      const winResult = determineWin(state.board, state.config);
       if (winResult) {
         endGame(winResult.winner, winResult.reason);
         return;
@@ -1065,8 +1175,28 @@
       }
     }
 
+    function createRng(seed) {
+      let t = seed >>> 0;
+      return () => {
+        t += 0x6D2B79F5;
+        let x = Math.imul(t ^ (t >>> 15), 1 | t);
+        x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+        return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function rngSeed() {
+      if (window.crypto?.getRandomValues) {
+        const buf = new Uint32Array(1);
+        window.crypto.getRandomValues(buf);
+        return buf[0] >>> 0;
+      }
+      return Math.floor(Math.random() * 0xffffffff);
+    }
+
     function randomChoice(arr) {
-      return arr[Math.floor(Math.random() * arr.length)];
+      const rand = state.rng ? state.rng() : Math.random();
+      return arr[Math.floor(rand * arr.length)];
     }
 
     function requestAIMove() {
@@ -1085,8 +1215,10 @@
     }
 
     function endGame(winner, reason) {
+      if (state.gameOver) return;
       state.gameOver = true;
       updateStatus(`${winner} win · ${reason}`, winner);
+      finalizeGameLog(winner, reason);
     }
 
     function restartGame() {
@@ -1098,6 +1230,11 @@
       captureToast.textContent = '';
 
       const board = initialBoard();
+      const config = {
+        exitFortEnabled: !!exitFortToggle.checked
+      };
+      const seed = rngSeed();
+
       state = {
         board,
         idBoard: createIdBoard(board),
@@ -1109,7 +1246,16 @@
         moveHistory: [],
         historyKeys: [],
         gameOver: false,
-        captureFlash: new Set()
+        captureFlash: new Set(),
+        config,
+        rng: createRng(seed),
+        gameMeta: {
+          id: crypto.randomUUID ? crypto.randomUUID() : `game-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          seed,
+          startedAt: new Date().toISOString(),
+          playerSide: sideSelect.value,
+          exitFortEnabled: config.exitFortEnabled
+        }
       };
       state.historyKeys.push(repetitionKey(state.board));
       updateStatus('Attackers to move', Side.ATTACKERS);
@@ -1120,15 +1266,272 @@
       }
     }
 
-    restartBtn.addEventListener('click', () => {
-      restartGame();
+    function finalizeGameLog(winner, reason) {
+      if (!state.gameMeta) return;
+      const entry = {
+        id: state.gameMeta.id,
+        startedAt: state.gameMeta.startedAt,
+        finishedAt: new Date().toISOString(),
+        seed: state.gameMeta.seed,
+        playerSide: state.gameMeta.playerSide,
+        exitFortEnabled: state.gameMeta.exitFortEnabled,
+        winner,
+        reason,
+        board: encodeBoard(state.board),
+        moveCount: state.moveHistory.length,
+        moves: state.moveHistory.map(move => ({
+          side: move.side,
+          from: notation(move.from),
+          to: notation(move.to),
+          captured: move.capturedPieces
+        }))
+      };
+      storedGames.push(entry);
+      persistStoredGames(storedGames);
+      refreshLogViewer();
+      state.gameMeta = null;
+    }
+
+    function loadStoredGames() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        return raw
+          .split('\n')
+          .map(line => line.trim())
+          .filter(Boolean)
+          .map(line => JSON.parse(line));
+      } catch (err) {
+        console.warn('Unable to load stored games', err);
+        return [];
+      }
+    }
+
+    function persistStoredGames(games) {
+      try {
+        const payload = games.map(entry => JSON.stringify(entry)).join('\n');
+        localStorage.setItem(STORAGE_KEY, payload);
+      } catch (err) {
+        console.warn('Unable to persist logs', err);
+      }
+    }
+
+    function refreshLogViewer() {
+      if (!storedGames.length) {
+        logViewer.value = '';
+        telemetryNote.textContent = 'No game logs yet.';
+        return;
+      }
+      logViewer.value = storedGames.map(entry => JSON.stringify(entry)).join('\n');
+      telemetryNote.textContent = `${storedGames.length} logged game${storedGames.length === 1 ? '' : 's'} stored locally.`;
+    }
+
+    function downloadFile(content, filename, type = 'application/json') {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function toCsv(games) {
+      const header = ['id', 'startedAt', 'finishedAt', 'seed', 'playerSide', 'exitFortEnabled', 'winner', 'reason', 'moveCount'];
+      const rows = games.map(entry => {
+        const values = header.map(key => entry[key]);
+        return values.map(value => {
+          if (value == null) return '';
+          const str = String(value).replace(/"/g, '""');
+          return `"${str}"`;
+        }).join(',');
+      });
+      return [header.join(','), ...rows].join('\n');
+    }
+
+    function copyBugReport() {
+      const boardState = encodeBoard(state.board);
+      const moves = state.moveHistory
+        .map((move, idx) => `${idx + 1}. ${move.side}: ${notation(move.from)}→${notation(move.to)}${move.captureSummary ? ' ' + move.captureSummary : ''}`)
+        .join('\n');
+      const report = [
+        'Hnefatafl bug report',
+        `Timestamp: ${new Date().toISOString()}`,
+        `Player side: ${state.playerSide}`,
+        `Exit Fort enabled: ${state.config.exitFortEnabled}`,
+        `Seed: ${state.gameMeta?.seed ?? 'n/a'}`,
+        `Board: ${boardState}`,
+        'Moves:',
+        moves || 'No moves yet.'
+      ].join('\n');
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(report).then(() => {
+          telemetryNote.textContent = 'Bug report copied to clipboard.';
+        }).catch(() => fallbackCopy(report));
+      } else {
+        fallbackCopy(report);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+      telemetryNote.textContent = 'Bug report copied (fallback).';
+    }
+
+    function clearLogs() {
+      storedGames = [];
+      persistStoredGames(storedGames);
+      refreshLogViewer();
+      telemetryNote.textContent = 'Logs cleared.';
+    }
+
+    function regressionScenarios() {
+      const scenarioAlex = [
+        { side: Side.ATTACKERS, from: 'A8', to: 'B8' },
+        { side: Side.DEFENDERS, from: 'H6', to: 'H3' },
+        { side: Side.ATTACKERS, from: 'H11', to: 'H4' },
+        { side: Side.DEFENDERS, from: 'G5', to: 'H5' },
+        { side: Side.ATTACKERS, from: 'A4', to: 'A3' },
+        { side: Side.DEFENDERS, from: 'G6', to: 'I6' },
+        { side: Side.ATTACKERS, from: 'K4', to: 'I4' },
+        { side: Side.DEFENDERS, from: 'F6', to: 'H6' },
+        { side: Side.ATTACKERS, from: 'G11', to: 'G8' },
+        { side: Side.DEFENDERS, from: 'H6', to: 'H11' }
+      ];
+
+      const scenarioCornerEscape = [
+        { side: Side.DEFENDERS, from: 'F6', to: 'F11' },
+        { side: Side.ATTACKERS, from: 'A5', to: 'A4' },
+        { side: Side.DEFENDERS, from: 'F11', to: 'K11' },
+        { side: Side.ATTACKERS, from: 'K5', to: 'K4' },
+        { side: Side.DEFENDERS, from: 'F5', to: 'K5' },
+        { side: Side.ATTACKERS, from: 'E1', to: 'E2' },
+        { side: Side.DEFENDERS, from: 'F7', to: 'K7' },
+        { side: Side.DEFENDERS, from: 'F6', to: 'K6' },
+        { side: Side.DEFENDERS, from: 'F5', to: 'K5' }
+      ];
+
+      return [
+        {
+          name: 'Exit Fort disabled prevents false win (Alex repro)',
+          run: () => {
+            let board = initialBoard();
+            for (const step of scenarioAlex) {
+              const move = {
+                side: step.side,
+                from: parseNotation(step.from),
+                to: parseNotation(step.to)
+              };
+              board = simulateMove(board, move);
+              const win = determineWin(board, { exitFortEnabled: false });
+              if (win) return false;
+            }
+            return true;
+          }
+        },
+        {
+          name: 'Corner escape recognized',
+          run: () => {
+            let board = initialBoard();
+            let result = null;
+            for (const step of scenarioCornerEscape) {
+              if (step.side === undefined) continue;
+              const move = {
+                side: step.side,
+                from: parseNotation(step.from),
+                to: parseNotation(step.to)
+              };
+              board = simulateMove(board, move);
+              result = determineWin(board, { exitFortEnabled: false });
+            }
+            return result?.winner === Side.DEFENDERS;
+          }
+        },
+        {
+          name: 'King capture ends in attackers win',
+          run: () => {
+            let board = initialBoard();
+            // Force capture by surrounding the king artificially
+            board[CENTER][CENTER - 1] = Piece.ATTACKER;
+            board[CENTER][CENTER + 1] = Piece.ATTACKER;
+            board[CENTER - 1][CENTER] = Piece.ATTACKER;
+            board[CENTER + 1][CENTER] = Piece.ATTACKER;
+            const result = determineWin(board, { exitFortEnabled: false });
+            return result?.winner === Side.ATTACKERS;
+          }
+        }
+      ];
+    }
+
+    function runRegressionTests() {
+      const scenarios = regressionScenarios();
+      const failures = [];
+      scenarios.forEach(test => {
+        const ok = test.run();
+        if (!ok) failures.push(test.name);
+      });
+      if (!failures.length) {
+        testStatusEl.textContent = `Regression tests passed (${scenarios.length})`;
+        testStatusEl.classList.remove('bad');
+        testStatusEl.classList.add('good');
+      } else {
+        testStatusEl.textContent = `Regression failures: ${failures.join(', ')}`;
+        testStatusEl.classList.remove('good');
+        testStatusEl.classList.add('bad');
+      }
+    }
+
+    function runSmokeChecklist() {
+      // Play 10 pseudo-random moves each side using deterministic RNG
+      let board = initialBoard();
+      let side = Side.ATTACKERS;
+      let rng = createRng(123456789);
+      for (let ply = 0; ply < 20; ply++) {
+        const moves = allMoves(board, side);
+        if (!moves.length) break;
+        const choice = moves[Math.floor(rng() * moves.length)];
+        board = simulateMove(board, choice);
+        const win = determineWin(board, { exitFortEnabled: false });
+        if (win) {
+          telemetryNote.textContent = `Checklist detected premature win on ply ${ply + 1}: ${win.reason}`;
+          return;
+        }
+        side = opposite(side);
+      }
+      telemetryNote.textContent = 'Checklist: 20-ply smoke test completed without premature wins.';
+    }
+
+    // Event wiring
+    restartBtn.addEventListener('click', restartGame);
+    sideSelect.addEventListener('change', restartGame);
+    exitFortToggle.addEventListener('change', () => {
+      state.config.exitFortEnabled = !!exitFortToggle.checked;
     });
 
-    sideSelect.addEventListener('change', () => {
-      restartGame();
+    refreshLogsBtn.addEventListener('click', refreshLogViewer);
+    downloadJsonBtn.addEventListener('click', () => {
+      if (!storedGames.length) return;
+      downloadFile(JSON.stringify(storedGames, null, 2), 'hnefatafl-logs.json');
     });
+    downloadCsvBtn.addEventListener('click', () => {
+      if (!storedGames.length) return;
+      downloadFile(toCsv(storedGames), 'hnefatafl-logs.csv', 'text/csv');
+    });
+    clearLogsBtn.addEventListener('click', clearLogs);
+    copyBugBtn.addEventListener('click', copyBugReport);
 
+    // Boot
     setupBoardGrid();
+    runRegressionTests();
+    runSmokeChecklist();
+    refreshLogViewer();
     restartGame();
   </script>
 </body>
