@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hnefatafl Engine (Copenhagen Rules)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --accent: #58a6ff;
+      --danger: #ff7b72;
+      --success: #3fb950;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --board-light: #c5d1e6;
+      --board-dark: #8b9abf;
+      --attacker: #ff7b72;
+      --defender: #7ee787;
+      --king: #f2cc60;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #182233, var(--bg));
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+      gap: 2rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      letter-spacing: 0.04em;
+    }
+
+    .app-shell {
+      width: min(1200px, 100%);
+      display: grid;
+      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .board-panel {
+      grid-column: span 2;
+      background: var(--panel);
+      border-radius: 1.25rem;
+      padding: 1.5rem;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    .board-grid {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: repeat(11, minmax(30px, 1fr));
+      gap: 4px;
+      aspect-ratio: 1;
+    }
+
+    .cell {
+      position: relative;
+      border-radius: 0.35rem;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: clamp(0.75rem, 1.5vw, 1.1rem);
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+
+    .cell:nth-child(odd) {
+      background: var(--board-light);
+    }
+
+    .cell:nth-child(even) {
+      background: var(--board-dark);
+    }
+
+    .cell.button-disabled {
+      cursor: not-allowed;
+      opacity: 0.4;
+    }
+
+    .piece {
+      width: 70%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #111;
+      font-size: clamp(0.8rem, 1.8vw, 1.2rem);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .attacker {
+      background: var(--attacker);
+      box-shadow: 0 6px 14px rgba(255, 123, 114, 0.4);
+    }
+
+    .defender {
+      background: var(--defender);
+      box-shadow: 0 6px 14px rgba(126, 231, 135, 0.35);
+    }
+
+    .king {
+      background: var(--king);
+      color: #222;
+      box-shadow: 0 6px 16px rgba(242, 204, 96, 0.55);
+    }
+
+    .legal-move::after,
+    .last-move::after,
+    .ai-move::after {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      border-radius: 0.45rem;
+      border: 2px dashed rgba(255, 255, 255, 0.6);
+      pointer-events: none;
+    }
+
+    .legal-move::after {
+      border-color: rgba(99, 255, 203, 0.85);
+    }
+
+    .last-move::after {
+      border-color: rgba(255, 215, 115, 0.9);
+    }
+
+    .ai-move::after {
+      border-color: rgba(255, 123, 114, 0.85);
+      border-style: solid;
+    }
+
+    .highlight-origin {
+      outline: 3px solid rgba(88, 166, 255, 0.8);
+      outline-offset: -3px;
+    }
+
+    .controls,
+    .status,
+    .transcript {
+      background: var(--panel);
+      border-radius: 1.25rem;
+      padding: 1.25rem;
+      box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
+    }
+
+    .controls label,
+    .status p {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.75rem;
+    }
+
+    .controls select,
+    .controls button {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border-radius: 0.85rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+
+    .controls button:hover,
+    .controls select:focus-visible {
+      background: rgba(88, 166, 255, 0.18);
+      transform: translateY(-1px);
+    }
+
+    .status {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .status .badge {
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      width: fit-content;
+    }
+
+    .badge.attackers {
+      background: rgba(255, 123, 114, 0.15);
+      color: var(--attacker);
+    }
+
+    .badge.defenders {
+      background: rgba(126, 231, 135, 0.15);
+      color: var(--defender);
+    }
+
+    .status .message {
+      font-size: 1rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .transcript {
+      max-height: 420px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .move-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      font-variant-numeric: tabular-nums;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .move-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .move-index {
+      color: var(--muted);
+      width: 2.5rem;
+    }
+
+    .move-text {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .move-side {
+      text-transform: capitalize;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .move-description {
+      font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+      .board-panel {
+        grid-column: span 1;
+      }
+
+      .board-grid {
+        gap: 3px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Hnefatafl Engine · Copenhagen Rules</h1>
+  <div class="app-shell">
+    <section class="board-panel">
+      <div class="toolbar" style="display:flex; gap:1rem; flex-wrap:wrap;">
+        <div class="controls" style="flex:1; min-width:220px;">
+          <label for="sideSelect">Play as</label>
+          <select id="sideSelect">
+            <option value="defenders">Defenders (White)</option>
+            <option value="attackers">Attackers (Black)</option>
+          </select>
+          <button id="restartBtn" style="margin-top:0.75rem;">Restart Game</button>
+        </div>
+        <div class="status" style="flex:1; min-width:220px;">
+          <p>Current Turn</p>
+          <span id="turnBadge" class="badge attackers">Attackers</span>
+          <p>Game State</p>
+          <div id="statusMessage" class="message">Attackers to move.</div>
+        </div>
+      </div>
+      <div id="board" class="board-grid" aria-label="Copenhagen Hnefatafl board"></div>
+    </section>
+    <section class="transcript" aria-live="polite" aria-label="Move transcript">
+      <h2 style="margin-top:0; font-size:1.1rem;">Move List</h2>
+      <div id="moves"></div>
+    </section>
+  </div>
+
+  <script>
+    const SIZE = 11;
+    const CENTER = Math.floor(SIZE / 2);
+    const Piece = Object.freeze({
+      EMPTY: '.',
+      ATTACKER: 'A',
+      DEFENDER: 'D',
+      KING: 'K'
+    });
+
+    const Side = Object.freeze({
+      ATTACKERS: 'attackers',
+      DEFENDERS: 'defenders'
+    });
+
+    const restrictedSquares = new Set([
+      `${CENTER},${CENTER}`,
+      `0,0`, `0,${SIZE - 1}`, `${SIZE - 1},0`, `${SIZE - 1},${SIZE - 1}`
+    ]);
+
+    const throneKey = `${CENTER},${CENTER}`;
+
+    const directions = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1]
+    ];
+
+    const boardEl = document.getElementById('board');
+    const movesEl = document.getElementById('moves');
+    const restartBtn = document.getElementById('restartBtn');
+    const sideSelect = document.getElementById('sideSelect');
+    const statusMessage = document.getElementById('statusMessage');
+    const turnBadge = document.getElementById('turnBadge');
+
+    let state = {};
+
+    function cloneBoard(board) {
+      return board.map(row => [...row]);
+    }
+
+    function initialBoard() {
+      const layout = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+      const attackers = [
+        [0, 3], [0, 4], [0, 5], [0, 6], [0, 7],
+        [1, 5],
+        [3, 0], [4, 0], [5, 0], [6, 0], [7, 0],
+        [5, 1],
+        [10, 3], [10, 4], [10, 5], [10, 6], [10, 7],
+        [9, 5],
+        [3, 10], [4, 10], [5, 10], [6, 10], [7, 10],
+        [5, 9]
+      ];
+
+      const defenders = [
+        [CENTER - 2, CENTER], [CENTER - 1, CENTER],
+        [CENTER + 1, CENTER], [CENTER + 2, CENTER],
+        [CENTER, CENTER - 2], [CENTER, CENTER - 1],
+        [CENTER, CENTER + 1], [CENTER, CENTER + 2],
+        [CENTER - 1, CENTER - 1], [CENTER - 1, CENTER + 1],
+        [CENTER + 1, CENTER - 1], [CENTER + 1, CENTER + 1]
+      ];
+
+      attackers.forEach(([r, c]) => (layout[r][c] = Piece.ATTACKER));
+      defenders.forEach(([r, c]) => (layout[r][c] = Piece.DEFENDER));
+      layout[CENTER][CENTER] = Piece.KING;
+      return layout;
+    }
+
+    function coordKey(r, c) {
+      return `${r},${c}`;
+    }
+
+    function isInside(r, c) {
+      return r >= 0 && c >= 0 && r < SIZE && c < SIZE;
+    }
+
+    function isRestricted(r, c) {
+      return restrictedSquares.has(coordKey(r, c));
+    }
+
+    function isCorner(r, c) {
+      return (r === 0 || r === SIZE - 1) && (c === 0 || c === SIZE - 1);
+    }
+
+    function pieceBelongsTo(piece, side) {
+      if (piece === Piece.EMPTY) return false;
+      if (side === Side.ATTACKERS) return piece === Piece.ATTACKER;
+      return piece === Piece.DEFENDER || piece === Piece.KING;
+    }
+
+    function opposite(side) {
+      return side === Side.ATTACKERS ? Side.DEFENDERS : Side.ATTACKERS;
+    }
+
+    function isHostileSquareAgainst(side, r, c, board) {
+      const key = coordKey(r, c);
+      if (key === throneKey) {
+        if (side === Side.ATTACKERS) return true;
+        return board[r][c] === Piece.EMPTY;
+      }
+      if (isCorner(r, c)) {
+        return board[r][c] === Piece.EMPTY || !pieceBelongsTo(board[r][c], side);
+      }
+      return false;
+    }
+
+    function getLegalMoves(board, r, c, side) {
+      const piece = board[r][c];
+      if (!pieceBelongsTo(piece, side)) return [];
+      const moves = [];
+      for (const [dr, dc] of directions) {
+        let nr = r + dr;
+        let nc = c + dc;
+        while (isInside(nr, nc) && board[nr][nc] === Piece.EMPTY) {
+          if (isRestricted(nr, nc) && piece !== Piece.KING) {
+            if (coordKey(nr, nc) === throneKey) {
+              nr += dr;
+              nc += dc;
+              continue;
+            }
+            break;
+          }
+          moves.push([nr, nc]);
+          nr += dr;
+          nc += dc;
+        }
+      }
+      return moves;
+    }
+
+    function movePiece(board, from, to) {
+      const newBoard = cloneBoard(board);
+      const [fr, fc] = from;
+      const [tr, tc] = to;
+      newBoard[tr][tc] = newBoard[fr][fc];
+      newBoard[fr][fc] = Piece.EMPTY;
+      return newBoard;
+    }
+
+    function captureEnemyPieces(board, movedTo, moverSide) {
+      const newBoard = cloneBoard(board);
+      const opponent = opposite(moverSide);
+      const captured = [];
+
+      for (const [dr, dc] of directions) {
+        const adjR = movedTo[0] + dr;
+        const adjC = movedTo[1] + dc;
+        if (!isInside(adjR, adjC)) continue;
+        const adjPiece = newBoard[adjR][adjC];
+        if (!pieceBelongsTo(adjPiece, opponent)) continue;
+
+        if (adjPiece === Piece.KING) {
+          if (maybeCaptureKing(newBoard, [adjR, adjC])) {
+            newBoard[adjR][adjC] = Piece.EMPTY;
+            captured.push({ r: adjR, c: adjC, piece: Piece.KING });
+          }
+          continue;
+        }
+
+        const beyondR = adjR + dr;
+        const beyondC = adjC + dc;
+        const beyondHostile =
+          (isInside(beyondR, beyondC) && pieceBelongsTo(newBoard[beyondR][beyondC], moverSide)) ||
+          (isInside(beyondR, beyondC) && isHostileSquareAgainst(opponent, beyondR, beyondC, newBoard));
+
+        if (beyondHostile) {
+          newBoard[adjR][adjC] = Piece.EMPTY;
+          captured.push({ r: adjR, c: adjC, piece: adjPiece });
+        }
+      }
+
+      const shieldCaptures = applyShieldwall(newBoard, moverSide);
+      return { board: newBoard, captured: [...captured, ...shieldCaptures] };
+    }
+
+    function maybeCaptureKing(board, pos) {
+      const [r, c] = pos;
+      if (r === 0 || r === SIZE - 1 || c === 0 || c === SIZE - 1) {
+        return false;
+      }
+      let hostileCount = 0;
+      for (const [dr, dc] of directions) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (!isInside(nr, nc)) continue;
+        const occupant = board[nr][nc];
+        if (occupant === Piece.ATTACKER) {
+          hostileCount += 1;
+          continue;
+        }
+        if (isHostileSquareAgainst(Side.DEFENDERS, nr, nc, board)) {
+          hostileCount += 1;
+        }
+      }
+
+      const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
+      const required = adjacentToThrone ? 3 : 4;
+      if (coordKey(r, c) === throneKey) {
+        return hostileCount >= 4;
+      }
+      return hostileCount >= required;
+    }
+
+    function applyShieldwall(board, moverSide) {
+      const opponent = opposite(moverSide);
+      const captured = [];
+
+      const bracketSatisfied = (row, col) => {
+        if (!isInside(row, col)) return false;
+        if (isCorner(row, col)) return true;
+        return pieceBelongsTo(board[row][col], moverSide);
+      };
+
+      const scanHorizontal = (edgeRow) => {
+        const innerRow = edgeRow === 0 ? 1 : SIZE - 2;
+        let col = 0;
+        while (col < SIZE) {
+          if (!pieceBelongsTo(board[edgeRow][col], opponent)) {
+            col += 1;
+            continue;
+          }
+          const start = col;
+          while (col < SIZE && pieceBelongsTo(board[edgeRow][col], opponent)) {
+            col += 1;
+          }
+          const end = col - 1;
+          if (end - start + 1 < 2) continue;
+          const leftIdx = start - 1;
+          const rightIdx = end + 1;
+          const touchesLeftCorner = start === 0 && isCorner(edgeRow, 0);
+          const touchesRightCorner = end === SIZE - 1 && isCorner(edgeRow, SIZE - 1);
+          const leftOk = touchesLeftCorner || (leftIdx >= 0 && bracketSatisfied(edgeRow, leftIdx));
+          const rightOk = touchesRightCorner || (rightIdx < SIZE && bracketSatisfied(edgeRow, rightIdx));
+          if (!leftOk || !rightOk) continue;
+          let support = true;
+          for (let c = start; c <= end; c++) {
+            if (!pieceBelongsTo(board[innerRow][c], moverSide)) {
+              support = false;
+              break;
+            }
+          }
+          if (!support) continue;
+          for (let c = start; c <= end; c++) {
+            if (board[edgeRow][c] === Piece.KING) continue;
+            captured.push({ r: edgeRow, c, piece: board[edgeRow][c] });
+            board[edgeRow][c] = Piece.EMPTY;
+          }
+        }
+      };
+
+      const scanVertical = (edgeCol) => {
+        const innerCol = edgeCol === 0 ? 1 : SIZE - 2;
+        let row = 0;
+        while (row < SIZE) {
+          if (!pieceBelongsTo(board[row][edgeCol], opponent)) {
+            row += 1;
+            continue;
+          }
+          const start = row;
+          while (row < SIZE && pieceBelongsTo(board[row][edgeCol], opponent)) {
+            row += 1;
+          }
+          const end = row - 1;
+          if (end - start + 1 < 2) continue;
+          const topIdx = start - 1;
+          const bottomIdx = end + 1;
+          const touchesTopCorner = start === 0 && isCorner(0, edgeCol);
+          const touchesBottomCorner = end === SIZE - 1 && isCorner(SIZE - 1, edgeCol);
+          const topOk = touchesTopCorner || (topIdx >= 0 && bracketSatisfied(topIdx, edgeCol));
+          const bottomOk = touchesBottomCorner || (bottomIdx < SIZE && bracketSatisfied(bottomIdx, edgeCol));
+          if (!topOk || !bottomOk) continue;
+          let support = true;
+          for (let r = start; r <= end; r++) {
+            if (!pieceBelongsTo(board[r][innerCol], moverSide)) {
+              support = false;
+              break;
+            }
+          }
+          if (!support) continue;
+          for (let r = start; r <= end; r++) {
+            if (board[r][edgeCol] === Piece.KING) continue;
+            captured.push({ r, c: edgeCol, piece: board[r][edgeCol] });
+            board[r][edgeCol] = Piece.EMPTY;
+          }
+        }
+      };
+
+      scanHorizontal(0);
+      scanHorizontal(SIZE - 1);
+      scanVertical(0);
+      scanVertical(SIZE - 1);
+
+      return captured;
+    }
+
+    function hasLegalMove(board, side) {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          if (pieceBelongsTo(board[r][c], side) && getLegalMoves(board, r, c, side).length) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function locateKing(board) {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          if (board[r][c] === Piece.KING) return [r, c];
+        }
+      }
+      return null;
+    }
+
+    function defendersEncircled(board) {
+      const kingPos = locateKing(board);
+      if (!kingPos) return true;
+      const visited = new Set();
+      const queue = [kingPos];
+      visited.add(coordKey(...kingPos));
+
+      while (queue.length) {
+        const [r, c] = queue.shift();
+        if (r === 0 || c === 0 || r === SIZE - 1 || c === SIZE - 1) {
+          return false;
+        }
+        for (const [dr, dc] of directions) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (!isInside(nr, nc)) continue;
+          const key = coordKey(nr, nc);
+          if (visited.has(key)) continue;
+          const cell = board[nr][nc];
+          if (cell === Piece.EMPTY || pieceBelongsTo(cell, Side.DEFENDERS)) {
+            visited.add(key);
+            queue.push([nr, nc]);
+          }
+        }
+      }
+      return true;
+    }
+
+    function simulateMove(board, move) {
+      const { from, to, side } = move;
+      const shifted = movePiece(board, from, to);
+      const result = captureEnemyPieces(shifted, to, side);
+      return result.board;
+    }
+
+    function attackersCanCaptureKing(board) {
+      const attackersMoves = allMoves(board, Side.ATTACKERS);
+      for (const mv of attackersMoves) {
+        const next = simulateMove(board, mv);
+        if (!locateKing(next)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function defendersExitFort(board) {
+      const kingPos = locateKing(board);
+      if (!kingPos) return false;
+      const [kr, kc] = kingPos;
+      const onEdge = kr === 0 || kc === 0 || kr === SIZE - 1 || kc === SIZE - 1;
+      if (!onEdge) return false;
+      const kingMoves = getLegalMoves(board, kr, kc, Side.DEFENDERS);
+      if (!kingMoves.length) return false;
+      return !attackersCanCaptureKing(board);
+    }
+
+    function allMoves(board, side) {
+      const moves = [];
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          if (!pieceBelongsTo(board[r][c], side)) continue;
+          const legal = getLegalMoves(board, r, c, side);
+          for (const [nr, nc] of legal) {
+            moves.push({ side, from: [r, c], to: [nr, nc] });
+          }
+        }
+      }
+      return moves;
+    }
+
+    function determineWin(board) {
+      const kingPos = locateKing(board);
+      if (!kingPos) {
+        return { winner: Side.ATTACKERS, reason: 'King captured • attackers win' };
+      }
+      if (isCorner(...kingPos)) {
+        return { winner: Side.DEFENDERS, reason: 'King reached a corner • defenders win' };
+      }
+      if (defendersExitFort(board)) {
+        return { winner: Side.DEFENDERS, reason: 'Exit fort established • defenders win' };
+      }
+      if (defendersEncircled(board)) {
+        return { winner: Side.ATTACKERS, reason: 'Defenders encircled • attackers win' };
+      }
+      if (!hasLegalMove(board, Side.ATTACKERS)) {
+        return { winner: Side.DEFENDERS, reason: 'Attackers have no legal moves' };
+      }
+      if (!hasLegalMove(board, Side.DEFENDERS)) {
+        return { winner: Side.ATTACKERS, reason: 'Defenders have no legal moves' };
+      }
+      return null;
+    }
+
+    function repetitionKey(board) {
+      return board.map(row => row.join('')).join('|');
+    }
+
+    function updateStatus(text, side) {
+      statusMessage.textContent = text;
+      turnBadge.textContent = side.charAt(0).toUpperCase() + side.slice(1);
+      turnBadge.className = `badge ${side}`;
+    }
+
+    function renderBoard() {
+      boardEl.innerHTML = '';
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const cellBtn = document.createElement('button');
+          cellBtn.className = 'cell';
+          cellBtn.dataset.row = r;
+          cellBtn.dataset.col = c;
+
+          if (state.highlight && coordKey(r, c) === coordKey(...state.highlight)) {
+            cellBtn.classList.add('highlight-origin');
+          }
+          if (state.legalTargets.has(coordKey(r, c))) {
+            cellBtn.classList.add('legal-move');
+          }
+          if (state.lastMove && coordKey(r, c) === coordKey(...state.lastMove.to)) {
+            cellBtn.classList.add('last-move');
+          }
+          if (state.aiMove && coordKey(r, c) === coordKey(...state.aiMove.to)) {
+            cellBtn.classList.add('ai-move');
+          }
+
+          const piece = state.board[r][c];
+          if (piece !== Piece.EMPTY) {
+            const pieceEl = document.createElement('div');
+            pieceEl.classList.add('piece');
+            if (piece === Piece.ATTACKER) pieceEl.classList.add('attacker');
+            if (piece === Piece.DEFENDER) pieceEl.classList.add('defender');
+            if (piece === Piece.KING) pieceEl.classList.add('king');
+            pieceEl.textContent = piece === Piece.ATTACKER ? 'A' : piece === Piece.DEFENDER ? 'D' : 'K';
+            cellBtn.appendChild(pieceEl);
+          }
+
+          cellBtn.addEventListener('click', () => onCellClick(r, c));
+          boardEl.appendChild(cellBtn);
+        }
+      }
+    }
+
+    function renderMoves() {
+      movesEl.innerHTML = '';
+      state.moveHistory.forEach((entry, idx) => {
+        const row = document.createElement('div');
+        row.className = 'move-row';
+        const idxEl = document.createElement('span');
+        idxEl.className = 'move-index';
+        idxEl.textContent = idx + 1;
+        const textEl = document.createElement('div');
+        textEl.className = 'move-text';
+        const sideEl = document.createElement('span');
+        sideEl.className = 'move-side';
+        sideEl.textContent = entry.side;
+        const descEl = document.createElement('span');
+        descEl.className = 'move-description';
+        descEl.textContent = `${notation(entry.from)} → ${notation(entry.to)}${entry.captureSummary ? ' (' + entry.captureSummary + ')' : ''}`;
+        textEl.append(sideEl, descEl);
+        row.append(idxEl, textEl);
+        movesEl.appendChild(row);
+      });
+      movesEl.scrollTop = movesEl.scrollHeight;
+    }
+
+    function notation([r, c]) {
+      return String.fromCharCode(65 + c) + (SIZE - r);
+    }
+
+    function setHighlight(from, legal) {
+      state.highlight = from;
+      state.legalTargets = new Set(legal.map(([r, c]) => coordKey(r, c)));
+    }
+
+    function clearHighlight() {
+      state.highlight = null;
+      state.legalTargets = new Set();
+    }
+
+    function isPlayerTurn() {
+      return state.currentSide === state.playerSide && !state.gameOver;
+    }
+
+    function onCellClick(r, c) {
+      if (!isPlayerTurn()) return;
+      const piece = state.board[r][c];
+      if (state.highlight && state.legalTargets.has(coordKey(r, c))) {
+        playerCommitMove([r, c]);
+        return;
+      }
+      if (pieceBelongsTo(piece, state.playerSide)) {
+        const legal = getLegalMoves(state.board, r, c, state.playerSide);
+        setHighlight([r, c], legal);
+        renderBoard();
+      }
+    }
+
+    function playerCommitMove([tr, tc]) {
+      const from = state.highlight;
+      if (!from) return;
+      executeMove({ from, to: [tr, tc], side: state.playerSide });
+    }
+
+    function executeMove(move) {
+      const { from, to, side } = move;
+      const movedBoard = movePiece(state.board, from, to);
+      const { board: afterCapture, captured } = captureEnemyPieces(movedBoard, to, side);
+      const repKey = repetitionKey(afterCapture);
+
+      state.board = afterCapture;
+      state.lastMove = move;
+      state.aiMove = side !== state.playerSide ? move : null;
+      clearHighlight();
+      state.historyKeys.push(repKey);
+      const captureSummary = captured.length ? `${captured.length} captured` : '';
+      state.moveHistory.push({ ...move, captureSummary });
+      renderBoard();
+      renderMoves();
+
+      const repetitionCount = state.historyKeys.filter(key => key === repKey).length;
+      if (repetitionCount >= 3 && side === Side.DEFENDERS) {
+        endGame(Side.ATTACKERS, 'Perpetual repetition by defenders');
+        return;
+      }
+
+      const winResult = determineWin(state.board);
+      if (winResult) {
+        endGame(winResult.winner, winResult.reason);
+        return;
+      }
+
+      state.currentSide = opposite(state.currentSide);
+      updateStatus(`${state.currentSide.charAt(0).toUpperCase() + state.currentSide.slice(1)} to move`, state.currentSide);
+
+      if (state.currentSide !== state.playerSide) {
+        requestAIMove();
+      }
+    }
+
+    function randomChoice(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function requestAIMove() {
+      if (state.gameOver) return;
+      const aiMoves = allMoves(state.board, state.currentSide);
+      if (!aiMoves.length) {
+        const winner = opposite(state.currentSide);
+        endGame(winner, `${state.currentSide} cannot move`);
+        return;
+      }
+      state.aiThinking = true;
+      setTimeout(() => {
+        state.aiThinking = false;
+        const choice = randomChoice(aiMoves);
+        executeMove(choice);
+        state.aiMove = choice;
+        renderBoard();
+      }, 350);
+    }
+
+    function endGame(winner, reason) {
+      state.gameOver = true;
+      updateStatus(`${winner} win · ${reason}`, winner);
+    }
+
+    function restartGame() {
+      state = {
+        board: initialBoard(),
+        currentSide: Side.ATTACKERS,
+        playerSide: sideSelect.value,
+        highlight: null,
+        legalTargets: new Set(),
+        lastMove: null,
+        aiMove: null,
+        moveHistory: [],
+        historyKeys: [],
+        gameOver: false,
+        aiThinking: false
+      };
+      state.historyKeys.push(repetitionKey(state.board));
+      updateStatus('Attackers to move', Side.ATTACKERS);
+      renderBoard();
+      renderMoves();
+      if (state.playerSide !== state.currentSide) {
+        requestAIMove();
+      }
+    }
+
+    restartBtn.addEventListener('click', () => {
+      restartGame();
+    });
+
+    sideSelect.addEventListener('change', () => {
+      restartGame();
+    });
+
+    restartGame();
+  </script>
+</body>
+</html>
