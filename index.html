@@ -7,25 +7,33 @@
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0d1117;
-      --panel: #161b22;
-      --accent: #58a6ff;
-      --danger: #ff7b72;
-      --success: #3fb950;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --board-light: #c5d1e6;
-      --board-dark: #8b9abf;
-      --attacker: #ff7b72;
-      --defender: #7ee787;
-      --king: #f2cc60;
+      --bg: #070a11;
+      --panel: #0f1624;
+      --panel-border: rgba(255, 255, 255, 0.04);
+      --accent: #8ad0ff;
+      --accent-strong: #58a6ff;
+      --text: #f4f7ff;
+      --muted: #96a3ba;
+      --board-light: #f0d9b5;
+      --board-dark: #b58863;
+      --attacker: #1c1d21;
+      --defender: #fdfcfa;
+      --king: #f4c95d;
+      --legal-dot: rgba(137, 208, 255, 0.92);
+      --last-move-from: rgba(88, 134, 255, 0.45);
+      --last-move-to: rgba(234, 197, 119, 0.6);
+      --capture-flash: rgba(255, 116, 116, 0.5);
       font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
     }
 
     body {
       margin: 0;
       min-height: 100vh;
-      background: radial-gradient(circle at top, #182233, var(--bg));
+      background: radial-gradient(circle at top, #131b2e, var(--bg));
       color: var(--text);
       display: flex;
       flex-direction: column;
@@ -44,49 +52,119 @@
       width: min(1200px, 100%);
       display: grid;
       gap: 1.5rem;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     }
 
     .board-panel {
       grid-column: span 2;
       background: var(--panel);
-      border-radius: 1.25rem;
-      padding: 1.5rem;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+      border-radius: 1.35rem;
+      padding: 1.75rem;
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .board-wrapper {
+      position: relative;
+      margin-top: 1.25rem;
+      width: min(92vw, 640px);
+      max-width: 100%;
+      margin-left: auto;
+      margin-right: auto;
     }
 
     .board-grid {
-      margin-top: 1rem;
       display: grid;
-      grid-template-columns: repeat(11, minmax(30px, 1fr));
+      grid-template-columns: repeat(11, 1fr);
+      grid-auto-rows: 1fr;
       gap: 4px;
+      width: 100%;
       aspect-ratio: 1;
+      padding: 0.85rem;
+      border-radius: 1.25rem;
+      background: radial-gradient(circle at top, #c9ad88, #9b6d44);
+      box-shadow: inset 0 1px 20px rgba(0, 0, 0, 0.45);
     }
 
     .cell {
       position: relative;
-      border-radius: 0.35rem;
       border: none;
+      border-radius: 0.4rem;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 600;
-      font-size: clamp(0.75rem, 1.5vw, 1.1rem);
-      transition: transform 120ms ease, box-shadow 120ms ease;
+      aspect-ratio: 1;
+      padding: 0;
+      transition: transform 140ms ease, box-shadow 140ms ease;
+      background-size: cover;
     }
 
-    .cell:nth-child(odd) {
+    .cell-light {
       background: var(--board-light);
     }
 
-    .cell:nth-child(even) {
+    .cell-light::after,
+    .cell-dark::after,
+    .cell::before {
+      pointer-events: none;
+    }
+
+    .cell-dark {
       background: var(--board-dark);
     }
 
-    .cell.button-disabled {
-      cursor: not-allowed;
-      opacity: 0.4;
+    .cell:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .cell:hover {
+      transform: translateY(-2px);
+    }
+
+    .cell.selected {
+      box-shadow: inset 0 0 0 3px rgba(138, 208, 255, 0.85);
+    }
+
+    .cell::before {
+      content: "";
+      position: absolute;
+      inset: 6%;
+      border-radius: 0.45rem;
+      opacity: 0;
+      transition: opacity 160ms ease;
+    }
+
+    .cell.last-move-from::before {
+      background: var(--last-move-from);
+      opacity: 1;
+    }
+
+    .cell.last-move-to::before {
+      background: var(--last-move-to);
+      opacity: 1;
+    }
+
+    .cell.capture-flash::before {
+      background: var(--capture-flash);
+      opacity: 1;
+    }
+
+    .cell.legal-move::after {
+      content: "";
+      width: 28%;
+      height: 28%;
+      background: var(--legal-dot);
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(138, 208, 255, 0.8);
+      opacity: 0.85;
     }
 
     .piece {
@@ -96,55 +174,56 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #111;
-      font-size: clamp(0.8rem, 1.8vw, 1.2rem);
-      font-weight: 700;
+      font-weight: 600;
+      font-size: clamp(0.85rem, 1.8vw, 1.2rem);
       letter-spacing: 0.02em;
+      pointer-events: none;
+      transition: filter 160ms ease;
     }
 
-    .attacker {
-      background: var(--attacker);
-      box-shadow: 0 6px 14px rgba(255, 123, 114, 0.4);
+    .piece.attacker {
+      background: radial-gradient(circle at 30% 30%, #3c3c43, var(--attacker));
+      color: #f2f4ff;
+      border: 2px solid rgba(255, 255, 255, 0.18);
+      box-shadow: inset 0 6px 12px rgba(255, 255, 255, 0.08);
     }
 
-    .defender {
-      background: var(--defender);
-      box-shadow: 0 6px 14px rgba(126, 231, 135, 0.35);
+    .piece.defender {
+      background: radial-gradient(circle at 30% 30%, #ffffff, #d9d9d9);
+      color: #1d1c19;
+      border: 2px solid rgba(0, 0, 0, 0.15);
+      box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.08);
     }
 
-    .king {
-      background: var(--king);
-      color: #222;
-      box-shadow: 0 6px 16px rgba(242, 204, 96, 0.55);
+    .piece.king {
+      background: radial-gradient(circle at 30% 30%, #ffeeb7, var(--king));
+      border: 2px solid #c38b29;
+      color: #2b1d07;
+      font-size: clamp(1rem, 2.5vw, 1.45rem);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+      box-shadow: inset 0 8px 16px rgba(255, 255, 255, 0.25);
     }
 
-    .legal-move::after,
-    .last-move::after,
-    .ai-move::after {
-      content: "";
+    .capture-toast {
       position: absolute;
-      inset: 4px;
-      border-radius: 0.45rem;
-      border: 2px dashed rgba(255, 255, 255, 0.6);
+      bottom: 1rem;
+      left: 50%;
+      transform: translate(-50%, 150%);
+      padding: 0.55rem 1.2rem;
+      border-radius: 999px;
+      background: rgba(8, 11, 18, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      opacity: 0;
+      transition: opacity 200ms ease, transform 200ms ease;
       pointer-events: none;
     }
 
-    .legal-move::after {
-      border-color: rgba(99, 255, 203, 0.85);
-    }
-
-    .last-move::after {
-      border-color: rgba(255, 215, 115, 0.9);
-    }
-
-    .ai-move::after {
-      border-color: rgba(255, 123, 114, 0.85);
-      border-style: solid;
-    }
-
-    .highlight-origin {
-      outline: 3px solid rgba(88, 166, 255, 0.8);
-      outline-offset: -3px;
+    .capture-toast.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
 
     .controls,
@@ -153,6 +232,7 @@
       background: var(--panel);
       border-radius: 1.25rem;
       padding: 1.25rem;
+      border: 1px solid var(--panel-border);
       box-shadow: 0 18px 45px rgba(0, 0, 0, 0.3);
     }
 
@@ -172,7 +252,7 @@
       padding: 0.85rem 1rem;
       border-radius: 0.85rem;
       border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.04);
       color: var(--text);
       font-weight: 600;
       font-size: 1rem;
@@ -182,7 +262,7 @@
 
     .controls button:hover,
     .controls select:focus-visible {
-      background: rgba(88, 166, 255, 0.18);
+      background: rgba(138, 208, 255, 0.18);
       transform: translateY(-1px);
     }
 
@@ -193,22 +273,24 @@
     }
 
     .status .badge {
-      padding: 0.4rem 0.75rem;
+      padding: 0.4rem 0.9rem;
       border-radius: 999px;
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       font-weight: 600;
       text-transform: capitalize;
       width: fit-content;
     }
 
     .badge.attackers {
-      background: rgba(255, 123, 114, 0.15);
-      color: var(--attacker);
+      background: rgba(28, 29, 33, 0.4);
+      color: #f2f4ff;
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
 
     .badge.defenders {
-      background: rgba(126, 231, 135, 0.15);
+      background: rgba(253, 252, 250, 0.1);
       color: var(--defender);
+      border: 1px solid rgba(253, 252, 250, 0.2);
     }
 
     .status .message {
@@ -228,9 +310,9 @@
     .move-row {
       display: flex;
       align-items: baseline;
-      gap: 0.5rem;
+      gap: 0.65rem;
       font-variant-numeric: tabular-nums;
-      padding-bottom: 0.35rem;
+      padding-bottom: 0.45rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
 
@@ -266,8 +348,13 @@
         grid-column: span 1;
       }
 
+      .board-wrapper {
+        width: 100%;
+      }
+
       .board-grid {
         gap: 3px;
+        padding: 0.65rem;
       }
     }
   </style>
@@ -276,7 +363,7 @@
   <h1>Hnefatafl Engine · Copenhagen Rules</h1>
   <div class="app-shell">
     <section class="board-panel">
-      <div class="toolbar" style="display:flex; gap:1rem; flex-wrap:wrap;">
+      <div class="toolbar">
         <div class="controls" style="flex:1; min-width:220px;">
           <label for="sideSelect">Play as</label>
           <select id="sideSelect">
@@ -292,7 +379,10 @@
           <div id="statusMessage" class="message">Attackers to move.</div>
         </div>
       </div>
-      <div id="board" class="board-grid" aria-label="Copenhagen Hnefatafl board"></div>
+      <div class="board-wrapper">
+        <div id="board" class="board-grid" aria-label="Copenhagen Hnefatafl board"></div>
+        <div id="captureToast" class="capture-toast" aria-live="assertive"></div>
+      </div>
     </section>
     <section class="transcript" aria-live="polite" aria-label="Move transcript">
       <h2 style="margin-top:0; font-size:1.1rem;">Move List</h2>
@@ -335,7 +425,12 @@
     const sideSelect = document.getElementById('sideSelect');
     const statusMessage = document.getElementById('statusMessage');
     const turnBadge = document.getElementById('turnBadge');
+    const captureToast = document.getElementById('captureToast');
 
+    const cellRefs = new Map();
+    const piecePool = new Map();
+    let captureToastTimeoutId = null;
+    let captureFlashTimeoutId = null;
     let state = {};
 
     function cloneBoard(board) {
@@ -368,6 +463,11 @@
       defenders.forEach(([r, c]) => (layout[r][c] = Piece.DEFENDER));
       layout[CENTER][CENTER] = Piece.KING;
       return layout;
+    }
+
+    function createIdBoard(board) {
+      let counter = 0;
+      return board.map(row => row.map(cell => (cell === Piece.EMPTY ? null : `piece-${counter++}`)));
     }
 
     function coordKey(r, c) {
@@ -721,41 +821,97 @@
       turnBadge.className = `badge ${side}`;
     }
 
-    function renderBoard() {
+    function setupBoardGrid() {
       boardEl.innerHTML = '';
+      cellRefs.clear();
       for (let r = 0; r < SIZE; r++) {
         for (let c = 0; c < SIZE; c++) {
           const cellBtn = document.createElement('button');
-          cellBtn.className = 'cell';
+          cellBtn.type = 'button';
+          cellBtn.className = `cell ${(r + c) % 2 === 0 ? 'cell-light' : 'cell-dark'}`;
           cellBtn.dataset.row = r;
           cellBtn.dataset.col = c;
+          cellBtn.setAttribute('aria-label', `Square ${notation([r, c])}`);
+          cellBtn.addEventListener('click', () => onCellClick(r, c));
+          boardEl.appendChild(cellBtn);
+          cellRefs.set(coordKey(r, c), cellBtn);
+        }
+      }
+    }
 
-          if (state.highlight && coordKey(r, c) === coordKey(...state.highlight)) {
-            cellBtn.classList.add('highlight-origin');
-          }
-          if (state.legalTargets.has(coordKey(r, c))) {
-            cellBtn.classList.add('legal-move');
-          }
-          if (state.lastMove && coordKey(r, c) === coordKey(...state.lastMove.to)) {
-            cellBtn.classList.add('last-move');
-          }
-          if (state.aiMove && coordKey(r, c) === coordKey(...state.aiMove.to)) {
-            cellBtn.classList.add('ai-move');
-          }
+    function capturePiecePositions() {
+      const positions = new Map();
+      piecePool.forEach((el, id) => {
+        positions.set(id, el.getBoundingClientRect());
+      });
+      return positions;
+    }
+
+    function renderBoard(prevPositions = null) {
+      for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+          const key = coordKey(r, c);
+          const cellBtn = cellRefs.get(key);
+          if (!cellBtn) continue;
+          const isLegal = state.legalTargets.has(key) && state.board[r][c] === Piece.EMPTY;
+          cellBtn.classList.toggle('legal-move', isLegal);
+          cellBtn.classList.toggle('selected', state.highlight && key === coordKey(...state.highlight));
+          cellBtn.classList.toggle('last-move-from', state.lastMove && key === coordKey(...state.lastMove.from));
+          cellBtn.classList.toggle('last-move-to', state.lastMove && key === coordKey(...state.lastMove.to));
+          cellBtn.classList.toggle('capture-flash', state.captureFlash.has(key));
 
           const piece = state.board[r][c];
-          if (piece !== Piece.EMPTY) {
-            const pieceEl = document.createElement('div');
-            pieceEl.classList.add('piece');
-            if (piece === Piece.ATTACKER) pieceEl.classList.add('attacker');
-            if (piece === Piece.DEFENDER) pieceEl.classList.add('defender');
-            if (piece === Piece.KING) pieceEl.classList.add('king');
-            pieceEl.textContent = piece === Piece.ATTACKER ? 'A' : piece === Piece.DEFENDER ? 'D' : 'K';
+          const pieceId = state.idBoard?.[r]?.[c] ?? null;
+          let pieceEl = pieceId ? piecePool.get(pieceId) : null;
+
+          if (piece === Piece.EMPTY || !pieceId) {
+            if (pieceEl) {
+              pieceEl.remove();
+              piecePool.delete(pieceId);
+            }
+            continue;
+          }
+
+          if (!pieceEl) {
+            pieceEl = document.createElement('div');
+            pieceEl.className = 'piece';
+            pieceEl.dataset.pieceId = pieceId;
+            piecePool.set(pieceId, pieceEl);
+          }
+
+          pieceEl.className = 'piece';
+          if (piece === Piece.ATTACKER) {
+            pieceEl.classList.add('attacker');
+            pieceEl.textContent = '';
+          } else if (piece === Piece.DEFENDER) {
+            pieceEl.classList.add('defender');
+            pieceEl.textContent = '';
+          } else {
+            pieceEl.classList.add('king');
+            pieceEl.textContent = '♔';
+          }
+
+          if (pieceEl.parentElement !== cellBtn) {
+            cellBtn.appendChild(pieceEl);
+          } else {
             cellBtn.appendChild(pieceEl);
           }
 
-          cellBtn.addEventListener('click', () => onCellClick(r, c));
-          boardEl.appendChild(cellBtn);
+          if (prevPositions && prevPositions.has(pieceId)) {
+            const prev = prevPositions.get(pieceId);
+            const next = pieceEl.getBoundingClientRect();
+            const dx = prev.left - next.left;
+            const dy = prev.top - next.top;
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+              pieceEl.animate([
+                { transform: `translate(${dx}px, ${dy}px)` },
+                { transform: 'translate(0, 0)' }
+              ], {
+                duration: 320,
+                easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+              });
+            }
+          }
         }
       }
     }
@@ -803,11 +959,12 @@
 
     function onCellClick(r, c) {
       if (!isPlayerTurn()) return;
-      const piece = state.board[r][c];
-      if (state.highlight && state.legalTargets.has(coordKey(r, c))) {
+      const key = coordKey(r, c);
+      if (state.highlight && state.legalTargets.has(key)) {
         playerCommitMove([r, c]);
         return;
       }
+      const piece = state.board[r][c];
       if (pieceBelongsTo(piece, state.playerSide)) {
         const legal = getLegalMoves(state.board, r, c, state.playerSide);
         setHighlight([r, c], legal);
@@ -821,21 +978,72 @@
       executeMove({ from, to: [tr, tc], side: state.playerSide });
     }
 
+    function showCaptureToast(captured) {
+      if (captureToastTimeoutId) clearTimeout(captureToastTimeoutId);
+      if (!captured.length) {
+        captureToast.classList.remove('visible');
+        captureToast.textContent = '';
+        return;
+      }
+      const counts = captured.reduce((acc, entry) => {
+        acc[entry.piece] = (acc[entry.piece] || 0) + 1;
+        return acc;
+      }, {});
+      const parts = [];
+      if (counts[Piece.ATTACKER]) parts.push(`${counts[Piece.ATTACKER]} attacker${counts[Piece.ATTACKER] > 1 ? 's' : ''}`);
+      if (counts[Piece.DEFENDER]) parts.push(`${counts[Piece.DEFENDER]} defender${counts[Piece.DEFENDER] > 1 ? 's' : ''}`);
+      if (counts[Piece.KING]) parts.push('the king');
+      captureToast.textContent = `Captured ${parts.join(' & ')}`;
+      captureToast.classList.add('visible');
+      captureToastTimeoutId = setTimeout(() => {
+        captureToast.classList.remove('visible');
+      }, 2000);
+    }
+
+    function setCaptureFlash(captured) {
+      if (captureFlashTimeoutId) clearTimeout(captureFlashTimeoutId);
+      state.captureFlash = new Set(captured.map(cap => coordKey(cap.r, cap.c)));
+      if (!state.captureFlash.size) return;
+      captureFlashTimeoutId = setTimeout(() => {
+        state.captureFlash.clear();
+        renderBoard();
+      }, 900);
+    }
+
     function executeMove(move) {
       const { from, to, side } = move;
+      const prevPositions = capturePiecePositions();
+      const [fr, fc] = from;
+      const [tr, tc] = to;
+      const movingId = state.idBoard[fr][fc];
       const movedBoard = movePiece(state.board, from, to);
+      state.idBoard[fr][fc] = null;
+      state.idBoard[tr][tc] = movingId;
+
       const { board: afterCapture, captured } = captureEnemyPieces(movedBoard, to, side);
-      const repKey = repetitionKey(afterCapture);
+      captured.forEach(cap => {
+        const capId = state.idBoard[cap.r][cap.c];
+        if (capId) {
+          const el = piecePool.get(capId);
+          if (el) el.remove();
+          piecePool.delete(capId);
+        }
+        state.idBoard[cap.r][cap.c] = null;
+      });
 
       state.board = afterCapture;
-      state.lastMove = move;
-      state.aiMove = side !== state.playerSide ? move : null;
+      state.lastMove = { from, to };
       clearHighlight();
+      setCaptureFlash(captured);
+
+      const repKey = repetitionKey(state.board);
       state.historyKeys.push(repKey);
       const captureSummary = captured.length ? `${captured.length} captured` : '';
       state.moveHistory.push({ ...move, captureSummary });
-      renderBoard();
+
+      renderBoard(prevPositions);
       renderMoves();
+      showCaptureToast(captured);
 
       const repetitionCount = state.historyKeys.filter(key => key === repKey).length;
       if (repetitionCount >= 3 && side === Side.DEFENDERS) {
@@ -869,13 +1077,10 @@
         endGame(winner, `${state.currentSide} cannot move`);
         return;
       }
-      state.aiThinking = true;
       setTimeout(() => {
-        state.aiThinking = false;
+        if (state.gameOver) return;
         const choice = randomChoice(aiMoves);
         executeMove(choice);
-        state.aiMove = choice;
-        renderBoard();
       }, 350);
     }
 
@@ -885,18 +1090,26 @@
     }
 
     function restartGame() {
+      piecePool.forEach(el => el.remove());
+      piecePool.clear();
+      if (captureToastTimeoutId) clearTimeout(captureToastTimeoutId);
+      if (captureFlashTimeoutId) clearTimeout(captureFlashTimeoutId);
+      captureToast.classList.remove('visible');
+      captureToast.textContent = '';
+
+      const board = initialBoard();
       state = {
-        board: initialBoard(),
+        board,
+        idBoard: createIdBoard(board),
         currentSide: Side.ATTACKERS,
         playerSide: sideSelect.value,
         highlight: null,
         legalTargets: new Set(),
         lastMove: null,
-        aiMove: null,
         moveHistory: [],
         historyKeys: [],
         gameOver: false,
-        aiThinking: false
+        captureFlash: new Set()
       };
       state.historyKeys.push(repetitionKey(state.board));
       updateStatus('Attackers to move', Side.ATTACKERS);
@@ -915,6 +1128,7 @@
       restartGame();
     });
 
+    setupBoardGrid();
     restartGame();
   </script>
 </body>
