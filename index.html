@@ -2185,6 +2185,42 @@
           }
         },
         {
+          name: 'Shieldwall does not capture the king',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            // King on top edge as part of a would-be shieldwall segment.
+            board[0][1] = Piece.KING;
+            board[0][2] = Piece.DEFENDER;
+            // Bracket and support setup.
+            board[0][3] = Piece.ATTACKER;
+            board[1][1] = Piece.ATTACKER;
+            board[1][2] = Piece.ATTACKER;
+            // Trigger.
+            board[5][4] = Piece.ATTACKER;
+            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
+            // King must remain on board.
+            return after[0][1] === Piece.KING;
+          }
+        },
+        {
+          name: 'King capture adjacent to throne requires 3-sided surround',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            // Put king adjacent to throne (CENTER,CENTER+1). Throne at (CENTER,CENTER).
+            board[CENTER][CENTER + 1] = Piece.KING;
+            // Attackers on three other sides.
+            board[CENTER - 1][CENTER + 1] = Piece.ATTACKER;
+            board[CENTER + 1][CENTER + 1] = Piece.ATTACKER;
+            board[CENTER][CENTER + 2] = Piece.ATTACKER;
+            // Fourth side is the throne square, treated as hostile to defenders.
+            // Perform a harmless attacker move elsewhere to trigger capture evaluation.
+            board[5][4] = Piece.ATTACKER;
+            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
+            // King should be captured (removed).
+            return after[CENTER][CENTER + 1] === Piece.EMPTY;
+          }
+        },
+        {
           name: 'King capture ends in attackers win',
           run: () => {
             let board = initialBoard();
