@@ -78,7 +78,7 @@
     .controls,
     .status {
       flex: 1;
-      min-width: 230px;
+      min-width: 240px;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
@@ -86,7 +86,8 @@
 
     .controls label,
     .status p,
-    .telemetry label {
+    .telemetry label,
+    .engine-stats-panel label {
       text-transform: uppercase;
       font-size: 0.75rem;
       letter-spacing: 0.08em;
@@ -170,6 +171,20 @@
       max-width: 100%;
       margin-left: auto;
       margin-right: auto;
+    }
+
+    .engine-status-line {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 0.35rem;
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    .engine-status-line span {
+      color: var(--text);
+      font-weight: 600;
     }
 
     .board-grid {
@@ -360,12 +375,45 @@
     .telemetry {
       display: flex;
       flex-direction: column;
-      gap: 0.9rem;
+      gap: 1rem;
     }
 
     .telemetry h2 {
       margin: 0;
       font-size: 1.1rem;
+    }
+
+    .engine-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .stat-card {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.85rem;
+      padding: 0.8rem;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .stat-card span {
+      display: block;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.15rem;
+    }
+
+    .stat-card strong {
+      font-size: 1.3rem;
+    }
+
+    .engine-pv {
+      font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-height: 1.6rem;
     }
 
     .telemetry-actions {
@@ -388,7 +436,8 @@
     }
 
     .telemetry-note,
-    .test-status {
+    .test-status,
+    .engine-status-log {
       font-size: 0.85rem;
       color: var(--muted);
     }
@@ -430,6 +479,14 @@
               <option value="attackers">Attackers (Black)</option>
             </select>
           </div>
+          <div>
+            <label for="difficultySelect">Difficulty</label>
+            <select id="difficultySelect">
+              <option value="casual">Casual · 0.2s/move</option>
+              <option value="standard">Standard · 1s/move</option>
+              <option value="strong" selected>Strong · 3s/move</option>
+            </select>
+          </div>
           <button class="primary-btn" id="restartBtn">Restart Game</button>
           <div class="toggle-row">
             <input type="checkbox" id="exitFortToggle" />
@@ -445,6 +502,10 @@
             <p>Game State</p>
             <div id="statusMessage" class="message">Attackers to move.</div>
           </div>
+          <div class="engine-status-line">
+            Engine:
+            <span id="engineStatus">Idle</span>
+          </div>
         </div>
       </div>
       <div class="board-wrapper">
@@ -459,13 +520,33 @@
     </section>
 
     <section class="panel telemetry">
-      <h2>Diagnostics & Logs</h2>
+      <h2>Diagnostics & Engine Telemetry</h2>
+      <div class="engine-stats-grid">
+        <div class="stat-card">
+          <span>Depth</span>
+          <strong id="statDepth">–</strong>
+        </div>
+        <div class="stat-card">
+          <span>Nodes</span>
+          <strong id="statNodes">–</strong>
+        </div>
+        <div class="stat-card">
+          <span>Eval</span>
+          <strong id="statEval">–</strong>
+        </div>
+        <div class="stat-card">
+          <span>Time</span>
+          <strong id="statTime">–</strong>
+        </div>
+      </div>
+      <div class="engine-pv" id="statPV">PV: —</div>
       <div class="telemetry-actions">
         <button class="ghost-btn" id="refreshLogsBtn">Refresh view</button>
         <button class="ghost-btn" id="downloadJsonBtn">Download JSON</button>
         <button class="ghost-btn" id="downloadCsvBtn">Download CSV</button>
         <button class="ghost-btn" id="clearLogsBtn">Clear logs</button>
         <button class="ghost-btn" id="copyBugBtn">Copy bug report</button>
+        <button class="ghost-btn" id="selfPlayBtn">Self-play x3</button>
       </div>
       <div id="testStatus" class="test-status">Regression tests pending…</div>
       <textarea id="logViewer" class="log-viewer" readonly></textarea>
@@ -473,45 +554,702 @@
     </section>
   </div>
 
+  <script id="engine-worker" type="javascript/worker">
+    (() => {
+      const SIZE = 11;
+      const CENTER = Math.floor(SIZE / 2);
+      const Piece = Object.freeze({ EMPTY: '.', ATTACKER: 'A', DEFENDER: 'D', KING: 'K' });
+      const Side = Object.freeze({ ATTACKERS: 'attackers', DEFENDERS: 'defenders' });
+      const restrictedSquares = new Set([
+        `${CENTER},${CENTER}`,
+        `0,0`, `0,${SIZE - 1}`, `${SIZE - 1},0`, `${SIZE - 1},${SIZE - 1}`
+      ]);
+      const throneKey = `${CENTER},${CENTER}`;
+      const directions = [ [1, 0], [-1, 0], [0, 1], [0, -1] ];
+
+      const zobrist = (() => {
+        const values = [];
+        let seed = 1234567;
+        const rand = () => {
+          seed ^= seed << 13;
+          seed ^= seed >> 17;
+          seed ^= seed << 5;
+          return (seed >>> 0) / 0xffffffff;
+        };
+        for (let idx = 0; idx < SIZE * SIZE * 4; idx++) {
+          values.push(BigInt(Math.floor(rand() * Number.MAX_SAFE_INTEGER)));
+        }
+        const sideValue = BigInt(0x9e3779b97f4a7c15);
+        return {
+          table: values,
+          sideValue
+        };
+      })();
+
+      function pieceIndex(piece) {
+        if (piece === Piece.ATTACKER) return 0;
+        if (piece === Piece.DEFENDER) return 1;
+        if (piece === Piece.KING) return 2;
+        return 3;
+      }
+
+      function zobristIndex(r, c, piece) {
+        return ((r * SIZE + c) * 4) + pieceIndex(piece);
+      }
+
+      function hashBoard(board, side) {
+        let hash = 0n;
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            const cell = board[r][c];
+            if (cell === Piece.EMPTY) continue;
+            hash ^= zobrist.table[zobristIndex(r, c, cell)];
+          }
+        }
+        if (side === Side.ATTACKERS) hash ^= zobrist.sideValue;
+        return hash;
+      }
+
+      function cloneBoard(board) {
+        return board.map(row => row.slice());
+      }
+
+      function coordKey(r, c) {
+        return `${r},${c}`;
+      }
+
+      function isInside(r, c) {
+        return r >= 0 && c >= 0 && r < SIZE && c < SIZE;
+      }
+
+      function isCorner(r, c) {
+        return (r === 0 || r === SIZE - 1) && (c === 0 || c === SIZE - 1);
+      }
+
+      function isRestricted(r, c) {
+        return restrictedSquares.has(coordKey(r, c));
+      }
+
+      function pieceBelongsTo(piece, side) {
+        if (piece === Piece.EMPTY) return false;
+        if (side === Side.ATTACKERS) return piece === Piece.ATTACKER;
+        return piece === Piece.DEFENDER || piece === Piece.KING;
+      }
+
+      function opposite(side) {
+        return side === Side.ATTACKERS ? Side.DEFENDERS : Side.ATTACKERS;
+      }
+
+      function isHostileSquareAgainst(side, r, c, board) {
+        const key = coordKey(r, c);
+        if (key === throneKey) {
+          if (side === Side.ATTACKERS) return true;
+          return board[r][c] === Piece.EMPTY;
+        }
+        if (isCorner(r, c)) {
+          return board[r][c] === Piece.EMPTY || !pieceBelongsTo(board[r][c], side);
+        }
+        return false;
+      }
+
+      function getLegalMoves(board, r, c, side) {
+        const piece = board[r][c];
+        if (!pieceBelongsTo(piece, side)) return [];
+        const moves = [];
+        for (const [dr, dc] of directions) {
+          let nr = r + dr;
+          let nc = c + dc;
+          while (isInside(nr, nc) && board[nr][nc] === Piece.EMPTY) {
+            if (isRestricted(nr, nc) && piece !== Piece.KING) {
+              if (coordKey(nr, nc) === throneKey) {
+                nr += dr;
+                nc += dc;
+                continue;
+              }
+              break;
+            }
+            moves.push([nr, nc]);
+            nr += dr;
+            nc += dc;
+          }
+        }
+        return moves;
+      }
+
+      function movePiece(board, from, to) {
+        const newBoard = cloneBoard(board);
+        const [fr, fc] = from;
+        const [tr, tc] = to;
+        newBoard[tr][tc] = newBoard[fr][fc];
+        newBoard[fr][fc] = Piece.EMPTY;
+        return newBoard;
+      }
+
+      function maybeCaptureKing(board, pos) {
+        const [r, c] = pos;
+        if (r === 0 || r === SIZE - 1 || c === 0 || c === SIZE - 1) {
+          return false;
+        }
+        let hostileCount = 0;
+        for (const [dr, dc] of directions) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (!isInside(nr, nc)) continue;
+          const occupant = board[nr][nc];
+          if (occupant === Piece.ATTACKER) {
+            hostileCount += 1;
+            continue;
+          }
+          if (isHostileSquareAgainst(Side.DEFENDERS, nr, nc, board)) {
+            hostileCount += 1;
+          }
+        }
+        const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
+        const required = adjacentToThrone ? 3 : 4;
+        if (coordKey(r, c) === throneKey) {
+          return hostileCount >= 4;
+        }
+        return hostileCount >= required;
+      }
+
+      function applyShieldwall(board, moverSide) {
+        const opponent = opposite(moverSide);
+        const captured = [];
+        const bracketSatisfied = (row, col) => {
+          if (!isInside(row, col)) return false;
+          if (isCorner(row, col)) return true;
+          return pieceBelongsTo(board[row][col], moverSide);
+        };
+
+        const scanHorizontal = (edgeRow) => {
+          const innerRow = edgeRow === 0 ? 1 : SIZE - 2;
+          let col = 0;
+          while (col < SIZE) {
+            if (!pieceBelongsTo(board[edgeRow][col], opponent)) {
+              col += 1;
+              continue;
+            }
+            const start = col;
+            while (col < SIZE && pieceBelongsTo(board[edgeRow][col], opponent)) {
+              col += 1;
+            }
+            const end = col - 1;
+            if (end - start + 1 < 2) continue;
+            const leftIdx = start - 1;
+            const rightIdx = end + 1;
+            const touchesLeftCorner = start === 0 && isCorner(edgeRow, 0);
+            const touchesRightCorner = end === SIZE - 1 && isCorner(edgeRow, SIZE - 1);
+            const leftOk = touchesLeftCorner || (leftIdx >= 0 && bracketSatisfied(edgeRow, leftIdx));
+            const rightOk = touchesRightCorner || (rightIdx < SIZE && bracketSatisfied(edgeRow, rightIdx));
+            if (!leftOk || !rightOk) continue;
+            let support = true;
+            for (let c = start; c <= end; c++) {
+              if (!pieceBelongsTo(board[innerRow][c], moverSide)) {
+                support = false;
+                break;
+              }
+            }
+            if (!support) continue;
+            for (let c = start; c <= end; c++) {
+              if (board[edgeRow][c] === Piece.KING) continue;
+              captured.push({ r: edgeRow, c, piece: board[edgeRow][c] });
+              board[edgeRow][c] = Piece.EMPTY;
+            }
+          }
+        };
+
+        const scanVertical = (edgeCol) => {
+          const innerCol = edgeCol === 0 ? 1 : SIZE - 2;
+          let row = 0;
+          while (row < SIZE) {
+            if (!pieceBelongsTo(board[row][edgeCol], opponent)) {
+              row += 1;
+              continue;
+            }
+            const start = row;
+            while (row < SIZE && pieceBelongsTo(board[row][edgeCol], opponent)) {
+              row += 1;
+            }
+            const end = row - 1;
+            if (end - start + 1 < 2) continue;
+            const topIdx = start - 1;
+            const bottomIdx = end + 1;
+            const touchesTopCorner = start === 0 && isCorner(0, edgeCol);
+            const touchesBottomCorner = end === SIZE - 1 && isCorner(SIZE - 1, edgeCol);
+            const topOk = touchesTopCorner || (topIdx >= 0 && bracketSatisfied(topIdx, edgeCol));
+            const bottomOk = touchesBottomCorner || (bottomIdx < SIZE && bracketSatisfied(bottomIdx, edgeCol));
+            if (!topOk || !bottomOk) continue;
+            let support = true;
+            for (let r = start; r <= end; r++) {
+              if (!pieceBelongsTo(board[r][innerCol], moverSide)) {
+                support = false;
+                break;
+              }
+            }
+            if (!support) continue;
+            for (let r = start; r <= end; r++) {
+              if (board[r][edgeCol] === Piece.KING) continue;
+              captured.push({ r, c: edgeCol, piece: board[r][edgeCol] });
+              board[r][edgeCol] = Piece.EMPTY;
+            }
+          }
+        };
+
+        scanHorizontal(0);
+        scanHorizontal(SIZE - 1);
+        scanVertical(0);
+        scanVertical(SIZE - 1);
+        return captured;
+      }
+
+      function captureEnemyPieces(board, movedTo, moverSide) {
+        const newBoard = cloneBoard(board);
+        const opponent = opposite(moverSide);
+        const captured = [];
+        for (const [dr, dc] of directions) {
+          const adjR = movedTo[0] + dr;
+          const adjC = movedTo[1] + dc;
+          if (!isInside(adjR, adjC)) continue;
+          const adjPiece = newBoard[adjR][adjC];
+          if (!pieceBelongsTo(adjPiece, opponent)) continue;
+          if (adjPiece === Piece.KING) {
+            if (maybeCaptureKing(newBoard, [adjR, adjC])) {
+              newBoard[adjR][adjC] = Piece.EMPTY;
+              captured.push({ r: adjR, c: adjC, piece: Piece.KING });
+            }
+            continue;
+          }
+          const beyondR = adjR + dr;
+          const beyondC = adjC + dc;
+          const beyondHostile =
+            (isInside(beyondR, beyondC) && pieceBelongsTo(newBoard[beyondR][beyondC], moverSide)) ||
+            (isInside(beyondR, beyondC) && isHostileSquareAgainst(opponent, beyondR, beyondC, newBoard));
+          if (beyondHostile) {
+            newBoard[adjR][adjC] = Piece.EMPTY;
+            captured.push({ r: adjR, c: adjC, piece: adjPiece });
+          }
+        }
+        const shieldCaptures = applyShieldwall(newBoard, moverSide);
+        return { board: newBoard, captured: [...captured, ...shieldCaptures] };
+      }
+
+      function locateKing(board) {
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            if (board[r][c] === Piece.KING) return [r, c];
+          }
+        }
+        return null;
+      }
+
+      function defendersEncircled(board) {
+        const kingPos = locateKing(board);
+        if (!kingPos) return true;
+        const visited = new Set();
+        const queue = [kingPos];
+        visited.add(coordKey(...kingPos));
+        while (queue.length) {
+          const [r, c] = queue.shift();
+          if (r === 0 || c === 0 || r === SIZE - 1 || c === SIZE - 1) {
+            return false;
+          }
+          for (const [dr, dc] of directions) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (!isInside(nr, nc)) continue;
+            const key = coordKey(nr, nc);
+            if (visited.has(key)) continue;
+            const cell = board[nr][nc];
+            if (cell === Piece.EMPTY || pieceBelongsTo(cell, Side.DEFENDERS)) {
+              visited.add(key);
+              queue.push([nr, nc]);
+            }
+          }
+        }
+        return true;
+      }
+
+      function hasLegalMove(board, side) {
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            if (pieceBelongsTo(board[r][c], side) && getLegalMoves(board, r, c, side).length) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      function attackersCanCaptureKing(board) {
+        const moves = allMoves(board, Side.ATTACKERS);
+        for (const mv of moves) {
+          const next = simulateMove(board, mv);
+          if (!locateKing(next)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function defendersExitFort(board) {
+        const kingPos = locateKing(board);
+        if (!kingPos) return false;
+        const [kr, kc] = kingPos;
+        const onEdge = kr === 0 || kc === 0 || kr === SIZE - 1 || kc === SIZE - 1;
+        if (!onEdge) return false;
+        const kingMoves = getLegalMoves(board, kr, kc, Side.DEFENDERS);
+        if (!kingMoves.length) return false;
+        return !attackersCanCaptureKing(board);
+      }
+
+      function determineWin(board, config) {
+        const kingPos = locateKing(board);
+        if (!kingPos) {
+          return { winner: Side.ATTACKERS, reason: 'King captured' };
+        }
+        if (isCorner(...kingPos)) {
+          return { winner: Side.DEFENDERS, reason: 'King escaped' };
+        }
+        if (config.exitFortEnabled && defendersExitFort(board)) {
+          return { winner: Side.DEFENDERS, reason: 'Exit fort' };
+        }
+        if (defendersEncircled(board)) {
+          return { winner: Side.ATTACKERS, reason: 'Encirclement' };
+        }
+        if (!hasLegalMove(board, Side.ATTACKERS)) {
+          return { winner: Side.DEFENDERS, reason: 'Attackers stalemated' };
+        }
+        if (!hasLegalMove(board, Side.DEFENDERS)) {
+          return { winner: Side.ATTACKERS, reason: 'Defenders stalemated' };
+        }
+        return null;
+      }
+
+      function simulateMove(board, move) {
+        const shifted = movePiece(board, move.from, move.to);
+        const result = captureEnemyPieces(shifted, move.to, move.side);
+        return result.board;
+      }
+
+      function allMoves(board, side) {
+        const moves = [];
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            if (!pieceBelongsTo(board[r][c], side)) continue;
+            const legal = getLegalMoves(board, r, c, side);
+            for (const [nr, nc] of legal) {
+              moves.push({ side, from: [r, c], to: [nr, nc] });
+            }
+          }
+        }
+        return moves;
+      }
+
+      function evaluateBoard(board, side, config) {
+        const win = determineWin(board, config);
+        if (win) {
+          if (win.winner === side) return 5000;
+          if (win.winner === opposite(side)) return -5000;
+        }
+        let attackers = 0;
+        let defenders = 0;
+        let kingSafety = 0;
+        let kingMobility = 0;
+        const kingPos = locateKing(board);
+        if (!kingPos) {
+          return side === Side.ATTACKERS ? 4000 : -4000;
+        }
+        const corners = [ [0,0], [0,SIZE-1], [SIZE-1,0], [SIZE-1,SIZE-1] ];
+        let minCorner = Infinity;
+        for (const [cr, cc] of corners) {
+          const dist = Math.abs(cr - kingPos[0]) + Math.abs(cc - kingPos[1]);
+          if (dist < minCorner) minCorner = dist;
+        }
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            const cell = board[r][c];
+            if (cell === Piece.ATTACKER) attackers += 1;
+            if (cell === Piece.DEFENDER) defenders += 1;
+            if (cell === Piece.KING) {
+              const centerDist = Math.abs(r - CENTER) + Math.abs(c - CENTER);
+              kingSafety -= centerDist * 3;
+              if (isCorner(r, c)) kingSafety += 500;
+            }
+          }
+        }
+        const kingMoves = getLegalMoves(board, kingPos[0], kingPos[1], Side.DEFENDERS).length;
+        kingMobility += kingMoves * 8;
+        const material = (defenders * 35 + 250) - attackers * 25;
+        const escapeBonus = (SIZE * 2 - minCorner) * 6;
+        let score = material + kingSafety + escapeBonus + kingMobility;
+        if (defendersEncircled(board)) score -= 600;
+        if (!hasLegalMove(board, Side.DEFENDERS)) score -= 1000;
+        if (!hasLegalMove(board, Side.ATTACKERS)) score += 1000;
+        return side === Side.DEFENDERS ? score : -score;
+      }
+
+      function scoreMove(board, move, config) {
+        const shifted = movePiece(board, move.from, move.to);
+        const { board: after, captured } = captureEnemyPieces(shifted, move.to, move.side);
+        let score = 0;
+        captured.forEach(cap => {
+          if (cap.piece === Piece.KING) score += 10000;
+          if (cap.piece === Piece.DEFENDER) score += 250;
+          if (cap.piece === Piece.ATTACKER) score += 180;
+        });
+        const win = determineWin(after, config);
+        if (win?.winner === move.side) score += 5000;
+        if (move.side === Side.DEFENDERS && after[move.to[0]][move.to[1]] === Piece.KING) {
+          const corners = [ [0,0], [0,SIZE-1], [SIZE-1,0], [SIZE-1,SIZE-1] ];
+          let minCorner = Infinity;
+          for (const [cr, cc] of corners) {
+            const dist = Math.abs(cr - move.to[0]) + Math.abs(cc - move.to[1]);
+            if (dist < minCorner) minCorner = dist;
+          }
+          score += (SIZE * 2 - minCorner) * 10;
+        }
+        return score;
+      }
+
+      function orderMoves(board, moves, heuristics, config) {
+        return moves
+          .map(m => ({ move: m, score: (heuristics.tt?.has(hashBoard(applyMove(board, m, config), opposite(m.side))) ? 50 : 0) + scoreMove(board, m, config) }))
+          .sort((a, b) => b.score - a.score)
+          .map(entry => entry.move);
+      }
+
+      function applyMove(board, move, config) {
+        const shifted = movePiece(board, move.from, move.to);
+        const { board: after } = captureEnemyPieces(shifted, move.to, move.side);
+        return after;
+      }
+
+      class SearchController {
+        constructor(settings, config) {
+          this.settings = settings;
+          this.config = config;
+          this.deadline = performance.now() + settings.moveTimeMs - 20;
+          this.nodes = 0;
+          this.cutNodes = 0;
+          this.ttHits = 0;
+          this.transposition = new Map();
+          this.killerMoves = new Map();
+          this.timeout = false;
+        }
+
+        shouldStop() {
+          if (this.timeout) return true;
+          if (performance.now() > this.deadline) {
+            this.timeout = true;
+            return true;
+          }
+          return false;
+        }
+
+        makeKey(board, side) {
+          return hashBoard(board, side);
+        }
+
+        storeTT(key, depth, score, flag, bestMove) {
+          this.transposition.set(key, { depth, score, flag, bestMove });
+        }
+
+        lookupTT(key, depth, alpha, beta) {
+          const entry = this.transposition.get(key);
+          if (!entry) return null;
+          this.ttHits += 1;
+          if (entry.depth >= depth) {
+            if (entry.flag === 'EXACT') return entry.score;
+            if (entry.flag === 'LOWER' && entry.score > alpha) return entry.score;
+            if (entry.flag === 'UPPER' && entry.score < beta) return entry.score;
+          }
+          return entry;
+        }
+      }
+
+      function negamax(board, depth, alpha, beta, side, controller, ply, pvLine) {
+        if (controller.shouldStop()) {
+          return { score: 0, pv: [] };
+        }
+        const win = determineWin(board, controller.config);
+        if (win) {
+          if (win.winner === side) {
+            return { score: 4000 - ply, pv: [] };
+          }
+          if (win.winner === opposite(side)) {
+            return { score: -4000 + ply, pv: [] };
+          }
+        }
+        if (depth === 0) {
+          return { score: evaluateBoard(board, side, controller.config), pv: [] };
+        }
+        controller.nodes += 1;
+        const key = controller.makeKey(board, side);
+        const ttResult = controller.lookupTT(key, depth, alpha, beta);
+        if (typeof ttResult === 'number') {
+          return { score: ttResult, pv: [] };
+        }
+        let moves = allMoves(board, side);
+        if (!moves.length) {
+          return { score: evaluateBoard(board, side, controller.config), pv: [] };
+        }
+        const heuristics = { tt: controller.transposition };
+        moves = moves
+          .map(move => ({ move, score: scoreMove(board, move, controller.config) }))
+          .sort((a, b) => b.score - a.score)
+          .map(entry => entry.move);
+        let bestMove = null;
+        let bestPV = [];
+        let flag = 'UPPER';
+        for (const move of moves) {
+          const nextBoard = applyMove(board, move, controller.config);
+          const child = negamax(nextBoard, depth - 1, -beta, -alpha, opposite(side), controller, ply + 1);
+          if (controller.timeout) {
+            return { score: 0, pv: [] };
+          }
+          const score = -child.score;
+          if (score > alpha) {
+            alpha = score;
+            bestMove = move;
+            bestPV = [move, ...child.pv];
+            flag = 'EXACT';
+          }
+          if (alpha >= beta) {
+            controller.cutNodes += 1;
+            flag = 'LOWER';
+            break;
+          }
+        }
+        if (bestMove) {
+          controller.storeTT(key, depth, alpha, flag, bestMove);
+        }
+        return { score: alpha, move: bestMove, pv: bestPV };
+      }
+
+      function iterativeDeepening(board, side, settings, config) {
+        const controller = new SearchController(settings, config);
+        const startedAt = performance.now();
+        let best = null;
+        let bestScore = 0;
+        let bestDepth = 0;
+        let bestPV = [];
+        for (let depth = 1; depth <= settings.maxDepth; depth += 1) {
+          if (controller.shouldStop()) break;
+          const result = negamax(board, depth, -Infinity, Infinity, side, controller, 0);
+          if (controller.timeout) break;
+          if (result.move) {
+            best = result.move;
+            bestScore = result.score;
+            bestDepth = depth;
+            bestPV = [result.move, ...result.pv];
+          }
+        }
+        if (!best) {
+          const moves = allMoves(board, side);
+          best = moves[Math.floor(Math.random() * moves.length)] || null;
+          bestDepth = 1;
+          bestScore = 0;
+          bestPV = best ? [best] : [];
+        }
+        const elapsed = Math.max(0, performance.now() - startedAt);
+        return {
+          move: best,
+          stats: {
+            depth: bestDepth,
+            nodes: controller.nodes,
+            eval: bestScore,
+            timeMs: elapsed,
+            pv: bestPV,
+            ttHits: controller.ttHits
+          }
+        };
+      }
+
+      function playSelfGame(settings, config, maxPly) {
+        let board = cloneBoard(config.initialBoard ?? config.board ?? []);
+        if (!board.length) {
+          throw new Error('Self-play requires starting board snapshot');
+        }
+        let side = Side.ATTACKERS;
+        const history = [];
+        for (let ply = 0; ply < maxPly; ply++) {
+          const { move } = iterativeDeepening(board, side, settings, config);
+          if (!move) break;
+          history.push({ side, move });
+          board = applyMove(board, move, config);
+          const win = determineWin(board, config);
+          if (win) {
+            return { winner: win.winner, ply: ply + 1, history };
+          }
+          side = opposite(side);
+        }
+        return { winner: null, ply: maxPly, history };
+      }
+
+      self.onmessage = (event) => {
+        const data = event.data;
+        if (data.type === 'MOVE_REQUEST') {
+          try {
+            const board = data.board.map(row => row.slice());
+            const result = iterativeDeepening(board, data.side, data.settings, data.config);
+            self.postMessage({
+              type: 'MOVE_RESULT',
+              id: data.id,
+              payload: result
+            });
+          } catch (err) {
+            self.postMessage({ type: 'MOVE_RESULT', id: data.id, error: err?.message || String(err) });
+          }
+        } else if (data.type === 'SELF_PLAY') {
+          try {
+            const summary = [];
+            for (let game = 0; game < data.games; game++) {
+              const snapshot = data.initialBoard.map(row => row.slice());
+              const result = playSelfGame(
+                { moveTimeMs: data.moveTimeMs, maxDepth: data.maxDepth },
+                { exitFortEnabled: data.exitFortEnabled, initialBoard: snapshot },
+                data.maxPly
+              );
+              summary.push(result);
+            }
+            self.postMessage({ type: 'SELF_PLAY_RESULT', id: data.id, payload: summary });
+          } catch (err) {
+            self.postMessage({ type: 'SELF_PLAY_RESULT', id: data.id, error: err?.message || String(err) });
+          }
+        }
+      };
+    })();
+  </script>
+
   <script>
     const SIZE = 11;
     const CENTER = Math.floor(SIZE / 2);
-    const Piece = Object.freeze({
-      EMPTY: '.',
-      ATTACKER: 'A',
-      DEFENDER: 'D',
-      KING: 'K'
-    });
-
-    const Side = Object.freeze({
-      ATTACKERS: 'attackers',
-      DEFENDERS: 'defenders'
-    });
-
+    const Piece = Object.freeze({ EMPTY: '.', ATTACKER: 'A', DEFENDER: 'D', KING: 'K' });
+    const Side = Object.freeze({ ATTACKERS: 'attackers', DEFENDERS: 'defenders' });
     const DEFAULT_CONFIG = Object.freeze({ exitFortEnabled: false });
     const STORAGE_KEY = 'hnefataflGameLogs';
+    const DifficultyProfiles = Object.freeze({
+      casual: { label: 'Casual', moveTimeMs: 200, maxDepth: 3 },
+      standard: { label: 'Standard', moveTimeMs: 1000, maxDepth: 8 },
+      strong: { label: 'Strong', moveTimeMs: 3000, maxDepth: 32 }
+    });
 
     const restrictedSquares = new Set([
       `${CENTER},${CENTER}`,
       `0,0`, `0,${SIZE - 1}`, `${SIZE - 1},0`, `${SIZE - 1},${SIZE - 1}`
     ]);
     const throneKey = `${CENTER},${CENTER}`;
+    const directions = [ [1,0], [-1,0], [0,1], [0,-1] ];
 
-    const directions = [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1]
-    ];
-
-    // Elements
     const boardEl = document.getElementById('board');
     const movesEl = document.getElementById('moves');
     const restartBtn = document.getElementById('restartBtn');
     const sideSelect = document.getElementById('sideSelect');
+    const difficultySelect = document.getElementById('difficultySelect');
     const exitFortToggle = document.getElementById('exitFortToggle');
     const statusMessage = document.getElementById('statusMessage');
     const turnBadge = document.getElementById('turnBadge');
+    const engineStatusEl = document.getElementById('engineStatus');
     const captureToast = document.getElementById('captureToast');
     const refreshLogsBtn = document.getElementById('refreshLogsBtn');
     const downloadJsonBtn = document.getElementById('downloadJsonBtn');
@@ -521,6 +1259,12 @@
     const logViewer = document.getElementById('logViewer');
     const telemetryNote = document.getElementById('telemetryNote');
     const testStatusEl = document.getElementById('testStatus');
+    const selfPlayBtn = document.getElementById('selfPlayBtn');
+    const statDepth = document.getElementById('statDepth');
+    const statNodes = document.getElementById('statNodes');
+    const statEval = document.getElementById('statEval');
+    const statTime = document.getElementById('statTime');
+    const statPV = document.getElementById('statPV');
 
     const cellRefs = new Map();
     const piecePool = new Map();
@@ -530,7 +1274,7 @@
     let state = {};
 
     function cloneBoard(board) {
-      return board.map(row => [...row]);
+      return board.map(row => row.slice());
     }
 
     function initialBoard() {
@@ -545,7 +1289,6 @@
         [3, 10], [4, 10], [5, 10], [6, 10], [7, 10],
         [5, 9]
       ];
-
       const defenders = [
         [CENTER - 2, CENTER], [CENTER - 1, CENTER],
         [CENTER + 1, CENTER], [CENTER + 2, CENTER],
@@ -554,7 +1297,6 @@
         [CENTER - 1, CENTER - 1], [CENTER - 1, CENTER + 1],
         [CENTER + 1, CENTER - 1], [CENTER + 1, CENTER + 1]
       ];
-
       attackers.forEach(([r, c]) => (layout[r][c] = Piece.ATTACKER));
       defenders.forEach(([r, c]) => (layout[r][c] = Piece.DEFENDER));
       layout[CENTER][CENTER] = Piece.KING;
@@ -641,14 +1383,12 @@
       const newBoard = cloneBoard(board);
       const opponent = opposite(moverSide);
       const captured = [];
-
       for (const [dr, dc] of directions) {
         const adjR = movedTo[0] + dr;
         const adjC = movedTo[1] + dc;
         if (!isInside(adjR, adjC)) continue;
         const adjPiece = newBoard[adjR][adjC];
         if (!pieceBelongsTo(adjPiece, opponent)) continue;
-
         if (adjPiece === Piece.KING) {
           if (maybeCaptureKing(newBoard, [adjR, adjC])) {
             newBoard[adjR][adjC] = Piece.EMPTY;
@@ -656,19 +1396,16 @@
           }
           continue;
         }
-
         const beyondR = adjR + dr;
         const beyondC = adjC + dc;
         const beyondHostile =
           (isInside(beyondR, beyondC) && pieceBelongsTo(newBoard[beyondR][beyondC], moverSide)) ||
           (isInside(beyondR, beyondC) && isHostileSquareAgainst(opponent, beyondR, beyondC, newBoard));
-
         if (beyondHostile) {
           newBoard[adjR][adjC] = Piece.EMPTY;
           captured.push({ r: adjR, c: adjC, piece: adjPiece });
         }
       }
-
       const shieldCaptures = applyShieldwall(newBoard, moverSide);
       return { board: newBoard, captured: [...captured, ...shieldCaptures] };
     }
@@ -692,7 +1429,6 @@
           hostileCount += 1;
         }
       }
-
       const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
       const required = adjacentToThrone ? 3 : 4;
       if (coordKey(r, c) === throneKey) {
@@ -704,13 +1440,11 @@
     function applyShieldwall(board, moverSide) {
       const opponent = opposite(moverSide);
       const captured = [];
-
       const bracketSatisfied = (row, col) => {
         if (!isInside(row, col)) return false;
         if (isCorner(row, col)) return true;
         return pieceBelongsTo(board[row][col], moverSide);
       };
-
       const scanHorizontal = (edgeRow) => {
         const innerRow = edgeRow === 0 ? 1 : SIZE - 2;
         let col = 0;
@@ -747,7 +1481,6 @@
           }
         }
       };
-
       const scanVertical = (edgeCol) => {
         const innerCol = edgeCol === 0 ? 1 : SIZE - 2;
         let row = 0;
@@ -770,26 +1503,24 @@
           const bottomOk = touchesBottomCorner || (bottomIdx < SIZE && bracketSatisfied(bottomIdx, edgeCol));
           if (!topOk || !bottomOk) continue;
           let support = true;
-          for (let r = start; r <= end; r++) {
-            if (!pieceBelongsTo(board[r][innerCol], moverSide)) {
+          for (let rIndex = start; rIndex <= end; rIndex++) {
+            if (!pieceBelongsTo(board[rIndex][innerCol], moverSide)) {
               support = false;
               break;
             }
           }
           if (!support) continue;
-          for (let r = start; r <= end; r++) {
-            if (board[r][edgeCol] === Piece.KING) continue;
-            captured.push({ r, c: edgeCol, piece: board[r][edgeCol] });
-            board[r][edgeCol] = Piece.EMPTY;
+          for (let rIndex = start; rIndex <= end; rIndex++) {
+            if (board[rIndex][edgeCol] === Piece.KING) continue;
+            captured.push({ r: rIndex, c: edgeCol, piece: board[rIndex][edgeCol] });
+            board[rIndex][edgeCol] = Piece.EMPTY;
           }
         }
       };
-
       scanHorizontal(0);
       scanHorizontal(SIZE - 1);
       scanVertical(0);
       scanVertical(SIZE - 1);
-
       return captured;
     }
 
@@ -819,7 +1550,6 @@
       const visited = new Set();
       const queue = [kingPos];
       visited.add(coordKey(...kingPos));
-
       while (queue.length) {
         const [r, c] = queue.shift();
         if (r === 0 || c === 0 || r === SIZE - 1 || c === SIZE - 1) {
@@ -839,13 +1569,6 @@
         }
       }
       return true;
-    }
-
-    function simulateMove(board, move) {
-      const { from, to, side } = move;
-      const shifted = movePiece(board, from, to);
-      const result = captureEnemyPieces(shifted, to, side);
-      return result.board;
     }
 
     function attackersCanCaptureKing(board) {
@@ -905,6 +1628,12 @@
         return { winner: Side.ATTACKERS, reason: 'Defenders have no legal moves' };
       }
       return null;
+    }
+
+    function simulateMove(board, move) {
+      const shifted = movePiece(board, move.from, move.to);
+      const result = captureEnemyPieces(shifted, move.to, move.side);
+      return result.board;
     }
 
     function repetitionKey(board) {
@@ -970,11 +1699,9 @@
           cellBtn.classList.toggle('last-move-from', state.lastMove && key === coordKey(...state.lastMove.from));
           cellBtn.classList.toggle('last-move-to', state.lastMove && key === coordKey(...state.lastMove.to));
           cellBtn.classList.toggle('capture-flash', state.captureFlash.has(key));
-
           const piece = state.board[r][c];
           const pieceId = state.idBoard?.[r]?.[c] ?? null;
           let pieceEl = pieceId ? piecePool.get(pieceId) : null;
-
           if (piece === Piece.EMPTY || !pieceId) {
             if (pieceEl) {
               pieceEl.remove();
@@ -982,14 +1709,12 @@
             }
             continue;
           }
-
           if (!pieceEl) {
             pieceEl = document.createElement('div');
             pieceEl.className = 'piece';
             pieceEl.dataset.pieceId = pieceId;
             piecePool.set(pieceId, pieceEl);
           }
-
           pieceEl.className = 'piece';
           if (piece === Piece.ATTACKER) {
             pieceEl.classList.add('attacker');
@@ -1001,11 +1726,9 @@
             pieceEl.classList.add('king');
             pieceEl.textContent = '♔';
           }
-
           if (pieceEl.parentElement !== cellBtn) {
             cellBtn.appendChild(pieceEl);
           }
-
           if (prevPositions && prevPositions.has(pieceId)) {
             const prev = prevPositions.get(pieceId);
             const next = pieceEl.getBoundingClientRect();
@@ -1125,7 +1848,6 @@
       const movedBoard = movePiece(state.board, from, to);
       state.idBoard[fr][fc] = null;
       state.idBoard[tr][tc] = movingId;
-
       const { board: afterCapture, captured } = captureEnemyPieces(movedBoard, to, side);
       captured.forEach(cap => {
         const capId = state.idBoard[cap.r][cap.c];
@@ -1136,12 +1858,10 @@
         }
         state.idBoard[cap.r][cap.c] = null;
       });
-
       state.board = afterCapture;
       state.lastMove = { from, to };
       clearHighlight();
       setCaptureFlash(captured);
-
       const repKey = repetitionKey(state.board);
       state.historyKeys.push(repKey);
       const captureSummary = captured.length ? `${captured.length} captured` : '';
@@ -1150,35 +1870,35 @@
         captureSummary,
         capturedPieces: captured.map(entry => ({ piece: entry.piece, location: notation([entry.r, entry.c]) }))
       });
-
       renderBoard(prevPositions);
       renderMoves();
       showCaptureToast(captured);
-
       const repetitionCount = state.historyKeys.filter(key => key === repKey).length;
       if (repetitionCount >= 3 && side === Side.DEFENDERS) {
         endGame(Side.ATTACKERS, 'Perpetual repetition by defenders');
         return;
       }
-
       const winResult = determineWin(state.board, state.config);
       if (winResult) {
         endGame(winResult.winner, winResult.reason);
         return;
       }
-
       state.currentSide = opposite(state.currentSide);
       updateStatus(`${state.currentSide.charAt(0).toUpperCase() + state.currentSide.slice(1)} to move`, state.currentSide);
-
       if (state.currentSide !== state.playerSide) {
         requestAIMove();
       }
     }
 
+    function randomChoice(arr) {
+      const rand = state.rng ? state.rng() : Math.random();
+      return arr[Math.floor(rand * arr.length)];
+    }
+
     function createRng(seed) {
       let t = seed >>> 0;
       return () => {
-        t += 0x6D2B79F5;
+        t += 0x6d2b79f5;
         let x = Math.imul(t ^ (t >>> 15), 1 | t);
         x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
         return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
@@ -1194,29 +1914,11 @@
       return Math.floor(Math.random() * 0xffffffff);
     }
 
-    function randomChoice(arr) {
-      const rand = state.rng ? state.rng() : Math.random();
-      return arr[Math.floor(rand * arr.length)];
-    }
-
-    function requestAIMove() {
-      if (state.gameOver) return;
-      const aiMoves = allMoves(state.board, state.currentSide);
-      if (!aiMoves.length) {
-        const winner = opposite(state.currentSide);
-        endGame(winner, `${state.currentSide} cannot move`);
-        return;
-      }
-      setTimeout(() => {
-        if (state.gameOver) return;
-        const choice = randomChoice(aiMoves);
-        executeMove(choice);
-      }, 350);
-    }
-
     function endGame(winner, reason) {
       if (state.gameOver) return;
       state.gameOver = true;
+      engineManager.cancelCurrent();
+      engineStatusEl.textContent = 'Idle';
       updateStatus(`${winner} win · ${reason}`, winner);
       finalizeGameLog(winner, reason);
     }
@@ -1228,13 +1930,10 @@
       if (captureFlashTimeoutId) clearTimeout(captureFlashTimeoutId);
       captureToast.classList.remove('visible');
       captureToast.textContent = '';
-
+      engineManager.cancelCurrent();
       const board = initialBoard();
-      const config = {
-        exitFortEnabled: !!exitFortToggle.checked
-      };
+      const config = { exitFortEnabled: !!exitFortToggle.checked };
       const seed = rngSeed();
-
       state = {
         board,
         idBoard: createIdBoard(board),
@@ -1255,8 +1954,11 @@
           startedAt: new Date().toISOString(),
           playerSide: sideSelect.value,
           exitFortEnabled: config.exitFortEnabled
-        }
+        },
+        engineToken: 0
       };
+      resetEngineStats();
+      engineStatusEl.textContent = 'Idle';
       state.historyKeys.push(repetitionKey(state.board));
       updateStatus('Attackers to move', Side.ATTACKERS);
       renderBoard();
@@ -1405,7 +2107,6 @@
         { side: Side.ATTACKERS, from: 'G11', to: 'G8' },
         { side: Side.DEFENDERS, from: 'H6', to: 'H11' }
       ];
-
       const scenarioCornerEscape = [
         { side: Side.DEFENDERS, from: 'F6', to: 'F11' },
         { side: Side.ATTACKERS, from: 'A5', to: 'A4' },
@@ -1417,18 +2118,13 @@
         { side: Side.DEFENDERS, from: 'F6', to: 'K6' },
         { side: Side.DEFENDERS, from: 'F5', to: 'K5' }
       ];
-
       return [
         {
           name: 'Exit Fort disabled prevents false win (Alex repro)',
           run: () => {
             let board = initialBoard();
             for (const step of scenarioAlex) {
-              const move = {
-                side: step.side,
-                from: parseNotation(step.from),
-                to: parseNotation(step.to)
-              };
+              const move = { side: step.side, from: parseNotation(step.from), to: parseNotation(step.to) };
               board = simulateMove(board, move);
               const win = determineWin(board, { exitFortEnabled: false });
               if (win) return false;
@@ -1442,12 +2138,7 @@
             let board = initialBoard();
             let result = null;
             for (const step of scenarioCornerEscape) {
-              if (step.side === undefined) continue;
-              const move = {
-                side: step.side,
-                from: parseNotation(step.from),
-                to: parseNotation(step.to)
-              };
+              const move = { side: step.side, from: parseNotation(step.from), to: parseNotation(step.to) };
               board = simulateMove(board, move);
               result = determineWin(board, { exitFortEnabled: false });
             }
@@ -1458,7 +2149,6 @@
           name: 'King capture ends in attackers win',
           run: () => {
             let board = initialBoard();
-            // Force capture by surrounding the king artificially
             board[CENTER][CENTER - 1] = Piece.ATTACKER;
             board[CENTER][CENTER + 1] = Piece.ATTACKER;
             board[CENTER - 1][CENTER] = Piece.ATTACKER;
@@ -1489,7 +2179,6 @@
     }
 
     function runSmokeChecklist() {
-      // Play 10 pseudo-random moves each side using deterministic RNG
       let board = initialBoard();
       let side = Side.ATTACKERS;
       let rng = createRng(123456789);
@@ -1508,13 +2197,230 @@
       telemetryNote.textContent = 'Checklist: 20-ply smoke test completed without premature wins.';
     }
 
-    // Event wiring
+    class EngineWorkerManager {
+      constructor() {
+        this.workerUrl = null;
+        this.worker = null;
+        this.moveRequestId = 0;
+        this.pending = new Map();
+        this.activeToken = 0;
+        this.ensureWorker();
+      }
+
+      ensureWorker() {
+        if (this.worker) return;
+        if (!this.workerUrl) {
+          const source = document.getElementById('engine-worker').textContent;
+          this.workerUrl = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+        }
+        this.worker = new Worker(this.workerUrl, { name: 'hnefatafl-engine' });
+        this.worker.onmessage = (event) => {
+          const { type, id, payload, error } = event.data;
+          const pending = this.pending.get(id);
+          if (!pending) return;
+          if (type === 'MOVE_RESULT' || type === 'SELF_PLAY_RESULT') {
+            this.pending.delete(id);
+            if (error) {
+              pending.reject(new Error(error));
+            } else {
+              pending.resolve(payload);
+            }
+          }
+        };
+        this.worker.onerror = (err) => {
+          console.warn('Engine worker error', err);
+          this.resetWorker();
+        };
+      }
+
+      resetWorker() {
+        if (this.worker) {
+          this.worker.terminate();
+          this.worker = null;
+        }
+        this.ensureWorker();
+      }
+
+      cancelCurrent() {
+        this.activeToken += 1;
+      }
+
+      requestMove(payload) {
+        this.ensureWorker();
+        const id = `move-${++this.moveRequestId}`;
+        const enriched = { ...payload, id, type: 'MOVE_REQUEST' };
+        const token = this.activeToken;
+        const promise = new Promise((resolve, reject) => {
+          this.pending.set(id, {
+            resolve: (data) => {
+              if (token !== this.activeToken) {
+                resolve(null);
+                return;
+              }
+              resolve(data);
+            },
+            reject
+          });
+        });
+        this.worker.postMessage(enriched);
+        return promise;
+      }
+
+      runSelfPlay(options) {
+        const source = document.getElementById('engine-worker').textContent;
+        const url = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+        const worker = new Worker(url, { name: 'hnefatafl-selfplay' });
+        const id = `self-${Date.now()}`;
+        return new Promise((resolve, reject) => {
+          worker.onmessage = (event) => {
+            if (event.data.id !== id) return;
+            const { payload, error } = event.data;
+            worker.terminate();
+            URL.revokeObjectURL(url);
+            if (error) reject(new Error(error));
+            else resolve(payload);
+          };
+          worker.onerror = (err) => {
+            worker.terminate();
+            URL.revokeObjectURL(url);
+            reject(err);
+          };
+          worker.postMessage({
+            type: 'SELF_PLAY',
+            id,
+            games: options.games,
+            maxDepth: options.maxDepth,
+            moveTimeMs: options.moveTimeMs,
+            exitFortEnabled: options.exitFortEnabled,
+            maxPly: options.maxPly,
+            initialBoard: options.initialBoard.map(row => row.slice())
+          });
+        });
+      }
+    }
+
+    const engineManager = new EngineWorkerManager();
+
+    function getDifficultySettings() {
+      const profile = DifficultyProfiles[difficultySelect.value] || DifficultyProfiles.standard;
+      return { moveTimeMs: profile.moveTimeMs, maxDepth: profile.maxDepth };
+    }
+
+    function resetEngineStats() {
+      statDepth.textContent = '–';
+      statNodes.textContent = '–';
+      statEval.textContent = '–';
+      statTime.textContent = '–';
+      statPV.textContent = 'PV: —';
+    }
+
+    function updateEngineStats(stats) {
+      if (!stats) {
+        resetEngineStats();
+        return;
+      }
+      statDepth.textContent = stats.depth ?? '–';
+      const nodes = stats.nodes != null ? `${(stats.nodes / 1000).toFixed(1)}k` : '–';
+      statNodes.textContent = nodes;
+      statEval.textContent = stats.eval != null ? `${stats.eval >= 0 ? '+' : ''}${(stats.eval / 100).toFixed(2)}` : '–';
+      statTime.textContent = stats.timeMs != null ? `${stats.timeMs.toFixed(0)} ms` : '–';
+      const pvText = stats.pv?.length
+        ? `PV: ${stats.pv.map(move => `${notation(move.from)}→${notation(move.to)}`).join(' · ')}`
+        : 'PV: —';
+      statPV.textContent = pvText;
+    }
+
+    function fallbackRandomMove() {
+      const moves = allMoves(state.board, state.currentSide);
+      if (!moves.length) {
+        const winner = opposite(state.currentSide);
+        endGame(winner, `${state.currentSide} cannot move`);
+        return;
+      }
+      const choice = randomChoice(moves);
+      executeMove(choice);
+    }
+
+    function requestAIMove() {
+      if (state.gameOver) return;
+      const settings = getDifficultySettings();
+      engineStatusEl.textContent = `Thinking (${DifficultyProfiles[difficultySelect.value]?.label ?? 'Standard'})…`;
+      const engineToken = ++state.engineToken;
+      engineManager
+        .requestMove({
+          board: state.board.map(row => row.slice()),
+          side: state.currentSide,
+          settings,
+          config: { exitFortEnabled: state.config.exitFortEnabled }
+        })
+        .then(result => {
+          if (!result) {
+            engineStatusEl.textContent = 'Idle';
+            return;
+          }
+          if (state.gameOver || engineToken !== state.engineToken) {
+            engineStatusEl.textContent = 'Idle';
+            return;
+          }
+          engineStatusEl.textContent = 'Move ready';
+          updateEngineStats(result.stats);
+          if (!result.move) {
+            fallbackRandomMove();
+            engineStatusEl.textContent = 'Idle';
+            return;
+          }
+          executeMove(result.move);
+          engineStatusEl.textContent = 'Idle';
+        })
+        .catch(err => {
+          console.error('Engine move failed', err);
+          engineStatusEl.textContent = 'Engine fallback';
+          fallbackRandomMove();
+          engineStatusEl.textContent = 'Idle';
+        });
+    }
+
+    function runSelfPlayHarness() {
+      if (state.currentSide !== state.playerSide) {
+        telemetryNote.textContent = 'Self-play disabled while engine turn is pending.';
+        return;
+      }
+      selfPlayBtn.disabled = true;
+      telemetryNote.textContent = 'Self-play batch running…';
+      engineManager
+        .runSelfPlay({
+          games: 3,
+          maxDepth: 4,
+          moveTimeMs: 120,
+          exitFortEnabled: state.config.exitFortEnabled,
+          maxPly: 80,
+          initialBoard: state.board.map(row => row.slice())
+        })
+        .then(results => {
+          const defendersWins = results.filter(r => r.winner === Side.DEFENDERS).length;
+          const attackersWins = results.filter(r => r.winner === Side.ATTACKERS).length;
+          const unfinished = results.length - defendersWins - attackersWins;
+          telemetryNote.textContent = `Self-play: ${defendersWins} defender wins, ${attackersWins} attacker wins, ${unfinished} unfinished.`;
+        })
+        .catch(err => {
+          telemetryNote.textContent = `Self-play failed: ${err.message}`;
+        })
+        .finally(() => {
+          selfPlayBtn.disabled = false;
+        });
+    }
+
     restartBtn.addEventListener('click', restartGame);
     sideSelect.addEventListener('change', restartGame);
+    difficultySelect.addEventListener('change', () => {
+      if (!state.gameOver && state.currentSide !== state.playerSide) {
+        engineManager.cancelCurrent();
+        requestAIMove();
+      }
+    });
     exitFortToggle.addEventListener('change', () => {
       state.config.exitFortEnabled = !!exitFortToggle.checked;
     });
-
     refreshLogsBtn.addEventListener('click', refreshLogViewer);
     downloadJsonBtn.addEventListener('click', () => {
       if (!storedGames.length) return;
@@ -1526,8 +2432,8 @@
     });
     clearLogsBtn.addEventListener('click', clearLogs);
     copyBugBtn.addEventListener('click', copyBugReport);
+    selfPlayBtn.addEventListener('click', runSelfPlayHarness);
 
-    // Boot
     setupBoardGrid();
     runRegressionTests();
     runSmokeChecklist();
