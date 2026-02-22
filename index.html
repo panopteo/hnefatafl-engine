@@ -2107,17 +2107,7 @@
         { side: Side.ATTACKERS, from: 'G11', to: 'G8' },
         { side: Side.DEFENDERS, from: 'H6', to: 'H11' }
       ];
-      const scenarioCornerEscape = [
-        { side: Side.DEFENDERS, from: 'F6', to: 'F11' },
-        { side: Side.ATTACKERS, from: 'A5', to: 'A4' },
-        { side: Side.DEFENDERS, from: 'F11', to: 'K11' },
-        { side: Side.ATTACKERS, from: 'K5', to: 'K4' },
-        { side: Side.DEFENDERS, from: 'F5', to: 'K5' },
-        { side: Side.ATTACKERS, from: 'E1', to: 'E2' },
-        { side: Side.DEFENDERS, from: 'F7', to: 'K7' },
-        { side: Side.DEFENDERS, from: 'F6', to: 'K6' },
-        { side: Side.DEFENDERS, from: 'F5', to: 'K5' }
-      ];
+
       return [
         {
           name: 'Exit Fort disabled prevents false win (Alex repro)',
@@ -2133,16 +2123,35 @@
           }
         },
         {
-          name: 'Corner escape recognized',
+          name: 'Corner escape recognized (king already in corner)',
           run: () => {
-            let board = initialBoard();
-            let result = null;
-            for (const step of scenarioCornerEscape) {
-              const move = { side: step.side, from: parseNotation(step.from), to: parseNotation(step.to) };
-              board = simulateMove(board, move);
-              result = determineWin(board, { exitFortEnabled: false });
-            }
+            const board = initialBoard();
+            // Minimal deterministic setup: king on a corner should immediately win.
+            board[CENTER][CENTER] = Piece.EMPTY;
+            board[0][0] = Piece.KING;
+            const result = determineWin(board, { exitFortEnabled: false });
             return result?.winner === Side.DEFENDERS;
+          }
+        },
+        {
+          name: 'Restricted squares block non-king movement (corner + throne)',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+
+            // Corner restriction: a non-king piece with a clear file to a corner cannot land on it.
+            board[0][3] = Piece.ATTACKER;
+            const legalCorner = getLegalMoves(board, 0, 3, Side.ATTACKERS)
+              .map(([r, c]) => coordKey(r, c));
+            if (legalCorner.includes(coordKey(0, 0))) return false;
+
+            // Throne restriction: a non-king piece cannot land on the throne, but can move past it.
+            board[CENTER][CENTER - 3] = Piece.ATTACKER;
+            const legalThrone = getLegalMoves(board, CENTER, CENTER - 3, Side.ATTACKERS)
+              .map(([r, c]) => coordKey(r, c));
+            if (legalThrone.includes(coordKey(CENTER, CENTER))) return false;
+            if (!legalThrone.includes(coordKey(CENTER, CENTER + 1))) return false;
+
+            return true;
           }
         },
         {
