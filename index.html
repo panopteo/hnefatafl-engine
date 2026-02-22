@@ -2221,6 +2221,19 @@
           }
         },
         {
+          name: 'King NOT captured adjacent to throne with only 2 attackers',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            board[CENTER][CENTER + 1] = Piece.KING;
+            // Only two attackers adjacent + throne hostile is not enough.
+            board[CENTER - 1][CENTER + 1] = Piece.ATTACKER;
+            board[CENTER][CENTER + 2] = Piece.ATTACKER;
+            board[5][4] = Piece.ATTACKER;
+            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
+            return after[CENTER][CENTER + 1] === Piece.KING;
+          }
+        },
+        {
           name: 'King capture ends in attackers win',
           run: () => {
             let board = initialBoard();
