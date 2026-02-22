@@ -2155,6 +2155,36 @@
           }
         },
         {
+          name: 'Standard capture: sandwich defender between attackers',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            // Setup: D at (5,5), A at (5,6); move A from (5,3)->(5,4) to capture D.
+            board[5][3] = Piece.ATTACKER;
+            board[5][6] = Piece.ATTACKER;
+            board[5][5] = Piece.DEFENDER;
+            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 3], to: [5, 4] });
+            return after[5][5] === Piece.EMPTY;
+          }
+        },
+        {
+          name: 'Shieldwall capture on edge (2+ pieces, bracketed + supported)',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            // Top edge defenders at (0,1)-(0,2).
+            board[0][1] = Piece.DEFENDER;
+            board[0][2] = Piece.DEFENDER;
+            // Bracket: left corner counts as bracket; right bracket is attacker at (0,3).
+            board[0][3] = Piece.ATTACKER;
+            // Support from inside row (row 1): attackers behind the edge segment.
+            board[1][1] = Piece.ATTACKER;
+            board[1][2] = Piece.ATTACKER;
+            // Trigger shieldwall with any legal attacker move that doesn't disturb the setup.
+            board[5][4] = Piece.ATTACKER;
+            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
+            return after[0][1] === Piece.EMPTY && after[0][2] === Piece.EMPTY;
+          }
+        },
+        {
           name: 'King capture ends in attackers win',
           run: () => {
             let board = initialBoard();
