@@ -690,6 +690,27 @@
         if (r === 0 || r === SIZE - 1 || c === 0 || c === SIZE - 1) {
           return false;
         }
+
+        const onThrone = coordKey(r, c) === throneKey;
+        const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
+
+        // Copenhagen nuance (bugfix): when the king is adjacent to the throne,
+        // the throne itself does NOT count as the 3rd capturing side if empty.
+        // We require THREE attackers on the three non-throne sides.
+        if (adjacentToThrone && !onThrone) {
+          let attackerSides = 0;
+          for (const [dr, dc] of directions) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (!isInside(nr, nc)) continue;
+            if (coordKey(nr, nc) === throneKey) continue;
+            if (board[nr][nc] === Piece.ATTACKER) attackerSides += 1;
+          }
+          return attackerSides >= 3;
+        }
+
+        // Default: king on throne needs 4 attackers; otherwise needs 4 hostile sides.
+        // Here we allow hostile squares (corners, empty throne) to count as capturing sides.
         let hostileCount = 0;
         for (const [dr, dc] of directions) {
           const nr = r + dr;
@@ -704,12 +725,10 @@
             hostileCount += 1;
           }
         }
-        const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
-        const required = adjacentToThrone ? 3 : 4;
-        if (coordKey(r, c) === throneKey) {
+        if (onThrone) {
           return hostileCount >= 4;
         }
-        return hostileCount >= required;
+        return hostileCount >= 4;
       }
 
       function applyShieldwall(board, moverSide) {
@@ -1415,6 +1434,28 @@
       if (r === 0 || r === SIZE - 1 || c === 0 || c === SIZE - 1) {
         return false;
       }
+
+      const onThrone = coordKey(r, c) === throneKey;
+      const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
+
+      // Copenhagen nuance (bugfix): when the king is adjacent to the throne,
+      // the throne itself does NOT count as the 3rd capturing side if empty.
+      // We require THREE attackers on the three non-throne sides.
+      if (adjacentToThrone && !onThrone) {
+        let attackerSides = 0;
+        for (const [dr, dc] of directions) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (!isInside(nr, nc)) continue;
+          // Skip the throne-adjacent square.
+          if (coordKey(nr, nc) === throneKey) continue;
+          if (board[nr][nc] === Piece.ATTACKER) attackerSides += 1;
+        }
+        return attackerSides >= 3;
+      }
+
+      // Default: king on throne needs 4 attackers; otherwise needs 4 hostile sides.
+      // Here we allow hostile squares (corners, empty throne) to count as capturing sides.
       let hostileCount = 0;
       for (const [dr, dc] of directions) {
         const nr = r + dr;
@@ -1429,12 +1470,10 @@
           hostileCount += 1;
         }
       }
-      const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
-      const required = adjacentToThrone ? 3 : 4;
-      if (coordKey(r, c) === throneKey) {
+      if (onThrone) {
         return hostileCount >= 4;
       }
-      return hostileCount >= required;
+      return hostileCount >= 4;
     }
 
     function applyShieldwall(board, moverSide) {
@@ -2213,34 +2252,59 @@
           }
         },
         {
-          name: 'King capture adjacent to throne requires 3-sided surround',
+          name: 'King capture adjacent to throne requires 3 attackers on non-throne sides',
           run: () => {
             const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
-            // Put king adjacent to throne (CENTER,CENTER+1). Throne at (CENTER,CENTER).
+            // King adjacent to throne at (CENTER, CENTER+1).
             board[CENTER][CENTER + 1] = Piece.KING;
-            // Attackers on three other sides.
+            // Three attackers on the three non-throne sides.
             board[CENTER - 1][CENTER + 1] = Piece.ATTACKER;
             board[CENTER + 1][CENTER + 1] = Piece.ATTACKER;
             board[CENTER][CENTER + 2] = Piece.ATTACKER;
-            // Fourth side is the throne square, treated as hostile to defenders.
-            // Perform a harmless attacker move elsewhere to trigger capture evaluation.
+            // Trigger capture evaluation.
             board[5][4] = Piece.ATTACKER;
             const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
-            // King should be captured (removed).
             return after[CENTER][CENTER + 1] === Piece.EMPTY;
           }
         },
         {
-          name: 'King NOT captured adjacent to throne with only 2 attackers',
+          name: 'King NOT captured adjacent to throne with only 2 attackers (empty throne does not count)',
           run: () => {
             const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
             board[CENTER][CENTER + 1] = Piece.KING;
-            // Only two attackers adjacent + throne hostile is not enough.
             board[CENTER - 1][CENTER + 1] = Piece.ATTACKER;
             board[CENTER][CENTER + 2] = Piece.ATTACKER;
             board[5][4] = Piece.ATTACKER;
             const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
             return after[CENTER][CENTER + 1] === Piece.KING;
+          }
+        },
+        {
+          name: 'Regression: Alex ply-13 king should NOT be captured (I7→G7)',
+          run: () => {
+            let board = initialBoard();
+            const moves = [
+              { side: Side.ATTACKERS, from: 'D11', to: 'D10' },
+              { side: Side.DEFENDERS, from: 'H6', to: 'H9' },
+              { side: Side.ATTACKERS, from: 'H11', to: 'H10' },
+              { side: Side.DEFENDERS, from: 'F8', to: 'H8' },
+              { side: Side.ATTACKERS, from: 'E11', to: 'E10' },
+              { side: Side.DEFENDERS, from: 'G7', to: 'G10' },
+              { side: Side.ATTACKERS, from: 'F11', to: 'E11' },
+              { side: Side.DEFENDERS, from: 'F7', to: 'I7' },
+              { side: Side.ATTACKERS, from: 'F10', to: 'F8' },
+              { side: Side.DEFENDERS, from: 'I7', to: 'I10' },
+              { side: Side.ATTACKERS, from: 'K7', to: 'I7' },
+              { side: Side.DEFENDERS, from: 'F6', to: 'F7' },
+              { side: Side.ATTACKERS, from: 'I7', to: 'G7' }
+            ];
+            for (const step of moves) {
+              const mv = { side: step.side, from: parseNotation(step.from), to: parseNotation(step.to) };
+              board = simulateMove(board, mv);
+            }
+            // After ply 13, the king should still be on F7.
+            const [kr, kc] = parseNotation('F7');
+            return board[kr][kc] === Piece.KING;
           }
         },
         {
