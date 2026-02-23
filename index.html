@@ -2302,9 +2302,11 @@
               const mv = { side: step.side, from: parseNotation(step.from), to: parseNotation(step.to) };
               board = simulateMove(board, mv);
             }
-            // After ply 13, the king should still be on F7.
             const [kr, kc] = parseNotation('F7');
-            return board[kr][kc] === Piece.KING;
+            if (board[kr][kc] !== Piece.KING) return false;
+            // And the game should NOT end with a king-captured win here.
+            const win = determineWin(board, { exitFortEnabled: false });
+            return win == null;
           }
         },
         {
