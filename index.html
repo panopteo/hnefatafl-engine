@@ -1640,6 +1640,16 @@
       return board.map(row => row.join('')).join('|');
     }
 
+    function repetitionLoser(historyKeys, repeatingSide) {
+      // Copenhagen variant implemented here: defenders lose on 3x repetition.
+      // We keep this as a small pure function so it can be unit-tested.
+      if (repeatingSide !== Side.DEFENDERS) return null;
+      if (!Array.isArray(historyKeys) || historyKeys.length < 3) return null;
+      const current = historyKeys[historyKeys.length - 1];
+      const count = historyKeys.reduce((acc, key) => acc + (key === current ? 1 : 0), 0);
+      return count >= 3 ? Side.DEFENDERS : null;
+    }
+
     function notation([r, c]) {
       return String.fromCharCode(65 + c) + (SIZE - r);
     }
@@ -1873,9 +1883,9 @@
       renderBoard(prevPositions);
       renderMoves();
       showCaptureToast(captured);
-      const repetitionCount = state.historyKeys.filter(key => key === repKey).length;
-      if (repetitionCount >= 3 && side === Side.DEFENDERS) {
-        endGame(Side.ATTACKERS, 'Perpetual repetition by defenders');
+      const loser = repetitionLoser(state.historyKeys, side);
+      if (loser) {
+        endGame(opposite(loser), `Perpetual repetition by ${loser}`);
         return;
       }
       const winResult = determineWin(state.board, state.config);
@@ -2231,6 +2241,20 @@
             board[5][4] = Piece.ATTACKER;
             const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
             return after[CENTER][CENTER + 1] === Piece.KING;
+          }
+        },
+        {
+          name: 'Repetition: defenders lose on 3x repetition',
+          run: () => {
+            const history = ['posA', 'posB', 'posA', 'posC', 'posA'];
+            return repetitionLoser(history, Side.DEFENDERS) === Side.DEFENDERS;
+          }
+        },
+        {
+          name: 'Repetition: attackers do not auto-lose',
+          run: () => {
+            const history = ['posA', 'posB', 'posA', 'posC', 'posA'];
+            return repetitionLoser(history, Side.ATTACKERS) == null;
           }
         },
         {
