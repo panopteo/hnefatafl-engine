@@ -698,15 +698,17 @@
         // the throne itself does NOT count as the 3rd capturing side if empty.
         // We require THREE attackers on the three non-throne sides.
         if (adjacentToThrone && !onThrone) {
-          let attackerSides = 0;
+          // The throne side never counts toward capturing the king, even if empty.
+          // Capture requires attackers on ALL three non-throne adjacent squares.
+          const nonThroneAdj = [];
           for (const [dr, dc] of directions) {
             const nr = r + dr;
             const nc = c + dc;
             if (!isInside(nr, nc)) continue;
             if (coordKey(nr, nc) === throneKey) continue;
-            if (board[nr][nc] === Piece.ATTACKER) attackerSides += 1;
+            nonThroneAdj.push([nr, nc]);
           }
-          return attackerSides >= 3;
+          return nonThroneAdj.length === 3 && nonThroneAdj.every(([nr, nc]) => board[nr][nc] === Piece.ATTACKER);
         }
 
         // Default: king on throne needs 4 attackers; otherwise needs 4 hostile sides.
@@ -1442,16 +1444,17 @@
       // the throne itself does NOT count as the 3rd capturing side if empty.
       // We require THREE attackers on the three non-throne sides.
       if (adjacentToThrone && !onThrone) {
-        let attackerSides = 0;
+        // The throne side never counts toward capturing the king, even if empty.
+        // Capture requires attackers on ALL three non-throne adjacent squares.
+        const nonThroneAdj = [];
         for (const [dr, dc] of directions) {
           const nr = r + dr;
           const nc = c + dc;
           if (!isInside(nr, nc)) continue;
-          // Skip the throne-adjacent square.
           if (coordKey(nr, nc) === throneKey) continue;
-          if (board[nr][nc] === Piece.ATTACKER) attackerSides += 1;
+          nonThroneAdj.push([nr, nc]);
         }
-        return attackerSides >= 3;
+        return nonThroneAdj.length === 3 && nonThroneAdj.every(([nr, nc]) => board[nr][nc] === Piece.ATTACKER);
       }
 
       // Default: king on throne needs 4 attackers; otherwise needs 4 hostile sides.
@@ -2264,7 +2267,9 @@
             // Trigger capture evaluation.
             board[5][4] = Piece.ATTACKER;
             const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
-            return after[CENTER][CENTER + 1] === Piece.EMPTY;
+            if (after[CENTER][CENTER + 1] !== Piece.EMPTY) return false;
+            const win = determineWin(after, { exitFortEnabled: false });
+            return win?.winner === Side.ATTACKERS;
           }
         },
         {
@@ -2276,7 +2281,9 @@
             board[CENTER][CENTER + 2] = Piece.ATTACKER;
             board[5][4] = Piece.ATTACKER;
             const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
-            return after[CENTER][CENTER + 1] === Piece.KING;
+            if (after[CENTER][CENTER + 1] !== Piece.KING) return false;
+            const win = determineWin(after, { exitFortEnabled: false });
+            return win == null;
           }
         },
         {
