@@ -2386,6 +2386,13 @@
           name: 'Regression: Alex ply-13 king should NOT be captured (I7→G7)',
           run: () => {
             let board = initialBoard();
+
+            const applyWithCaptures = (b, mv) => {
+              const shifted = movePiece(b, mv.from, mv.to);
+              const result = captureEnemyPieces(shifted, mv.to, mv.side);
+              return result;
+            };
+
             const moves = [
               { side: Side.ATTACKERS, from: 'D11', to: 'D10' },
               { side: Side.DEFENDERS, from: 'H6', to: 'H9' },
@@ -2398,13 +2405,22 @@
               { side: Side.ATTACKERS, from: 'F10', to: 'F8' },
               { side: Side.DEFENDERS, from: 'I7', to: 'I10' },
               { side: Side.ATTACKERS, from: 'K7', to: 'I7' },
-              { side: Side.DEFENDERS, from: 'F6', to: 'F7' },
-              { side: Side.ATTACKERS, from: 'I7', to: 'G7' }
+              { side: Side.DEFENDERS, from: 'F6', to: 'F7' }
             ];
+
             for (const step of moves) {
               const mv = { side: step.side, from: parseNotation(step.from), to: parseNotation(step.to) };
               board = simulateMove(board, mv);
             }
+
+            // Final ply 13 move, but keep capture metadata for assertion.
+            const last = { side: Side.ATTACKERS, from: parseNotation('I7'), to: parseNotation('G7') };
+            const afterLast = applyWithCaptures(board, last);
+            board = afterLast.board;
+
+            // Ensure the last move did NOT capture the king.
+            if (afterLast.captured.some(x => x.piece === Piece.KING)) return false;
+
             const [kr, kc] = parseNotation('F7');
             if (board[kr][kc] !== Piece.KING) return false;
 
