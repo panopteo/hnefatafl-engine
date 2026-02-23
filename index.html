@@ -2107,19 +2107,77 @@
 
     function copyBugReport() {
       const boardState = encodeBoard(state.board);
+
       const moves = state.moveHistory
-        .map((move, idx) => `${idx + 1}. ${move.side}: ${notation(move.from)}→${notation(move.to)}${move.captureSummary ? ' ' + move.captureSummary : ''}`)
+        .map((move, idx) => {
+          const caps = (move.capturedPieces && move.capturedPieces.length)
+            ? ` [captured: ${move.capturedPieces.map(c => `${c.piece}@${c.location}`).join(', ')}]`
+            : '';
+          return `${idx + 1}. ${move.side}: ${notation(move.from)}→${notation(move.to)}${move.captureSummary ? ' ' + move.captureSummary : ''}${caps}`;
+        })
         .join('\n');
+
+      const findKing = () => {
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            if (state.board[r][c] === Piece.KING) return [r, c];
+          }
+        }
+        return null;
+      };
+
+      const kingPos = findKing();
+      const lastMove = state.moveHistory[state.moveHistory.length - 1];
+      const lastKingCapture = lastMove?.capturedPieces?.find(c => c.piece === Piece.KING);
+
+      const kingLine = kingPos
+        ? `King: ${notation(kingPos)} (alive)`
+        : (lastKingCapture ? `King: captured at ${lastKingCapture.location}` : 'King: not found');
+
+      const adjSnapshot = (() => {
+        const pos = kingPos || (lastKingCapture ? parseNotation(lastKingCapture.location) : null);
+        if (!pos) return null;
+        const [r, c] = pos;
+        const dirs = [
+          ['N', -1, 0],
+          ['S', 1, 0],
+          ['W', 0, -1],
+          ['E', 0, 1]
+        ];
+        const fmt = (cell) => {
+          if (cell === Piece.EMPTY) return 'empty';
+          if (cell === Piece.ATTACKER) return 'A';
+          if (cell === Piece.DEFENDER) return 'D';
+          if (cell === Piece.KING) return 'K';
+          return String(cell);
+        };
+        const parts = [];
+        for (const [label, dr, dc] of dirs) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (!isInside(nr, nc)) {
+            parts.push(`${label}=offboard`);
+            continue;
+          }
+          const special = (coordKey(nr, nc) === throneKey) ? ' (throne)' : (isCorner(nr, nc) ? ' (corner)' : '');
+          parts.push(`${label}=${fmt(state.board[nr][nc])}${special}`);
+        }
+        return `King adjacency: ${parts.join(', ')}`;
+      })();
+
       const report = [
         'Hnefatafl bug report',
         `Timestamp: ${new Date().toISOString()}`,
         `Player side: ${state.playerSide}`,
         `Exit Fort enabled: ${state.config.exitFortEnabled}`,
         `Seed: ${state.gameMeta?.seed ?? 'n/a'}`,
+        kingLine,
+        adjSnapshot,
         `Board: ${boardState}`,
         'Moves:',
         moves || 'No moves yet.'
-      ].join('\n');
+      ].filter(Boolean).join('\n');
+
       if (navigator.clipboard?.writeText) {
         navigator.clipboard.writeText(report).then(() => {
           telemetryNote.textContent = 'Bug report copied to clipboard.';
