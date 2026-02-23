@@ -1224,6 +1224,18 @@
           if (maybeCaptureKing(b, [CENTER, CENTER + 1])) failures.push('king-adj-throne-2A-no-capture');
         }
 
+        // Exact Alex bug geometry orientation (as asserted in UI regression):
+        // king at F7, N=A, E=A, W=D, S=empty throne => MUST NOT capture.
+        {
+          const b = emptyBoard();
+          b[CENTER][CENTER] = Piece.EMPTY; // throne
+          b[CENTER - 1][CENTER] = Piece.KING; // one step north of throne (so S is throne)
+          b[CENTER - 2][CENTER] = Piece.ATTACKER; // N
+          b[CENTER - 1][CENTER + 1] = Piece.ATTACKER; // E
+          b[CENTER - 1][CENTER - 1] = Piece.DEFENDER; // W
+          if (maybeCaptureKing(b, [CENTER - 1, CENTER])) failures.push('alex-geometry-no-capture');
+        }
+
         // Positive case: 3 attackers on non-throne sides => capture.
         {
           const b = emptyBoard();
