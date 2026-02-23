@@ -2382,6 +2382,9 @@
             if (coordKey(sr, sc) !== throneKey) return false;
             if (board[sr][sc] !== Piece.EMPTY) return false;
 
+            // In particular, the king should not be considered capturable in this position.
+            if (maybeCaptureKing(board, [kr, kc])) return false;
+
             // And the game should NOT end with a king-captured win here.
             const win = determineWin(board, { exitFortEnabled: false });
             return win == null;
