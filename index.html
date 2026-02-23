@@ -2311,6 +2311,19 @@
             }
             const [kr, kc] = parseNotation('F7');
             if (board[kr][kc] !== Piece.KING) return false;
+
+            // Validate the exact bug geometry at this point:
+            // King at F7, N=attacker, E=attacker, W=defender, S=empty throne.
+            const [nr, nc] = [kr - 1, kc];
+            const [er, ec] = [kr, kc + 1];
+            const [wr, wc] = [kr, kc - 1];
+            const [sr, sc] = [kr + 1, kc];
+            if (board[nr][nc] !== Piece.ATTACKER) return false;
+            if (board[er][ec] !== Piece.ATTACKER) return false;
+            if (board[wr][wc] !== Piece.DEFENDER) return false;
+            if (coordKey(sr, sc) !== throneKey) return false;
+            if (board[sr][sc] !== Piece.EMPTY) return false;
+
             // And the game should NOT end with a king-captured win here.
             const win = determineWin(board, { exitFortEnabled: false });
             return win == null;
