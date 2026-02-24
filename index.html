@@ -1247,6 +1247,18 @@
           if (!maybeCaptureKing(b, [CENTER, CENTER + 1])) failures.push('king-adj-throne-3A-captures');
         }
 
+        // Adjacent-to-throne: throne occupancy must NOT count as a capturing side.
+        // Even if the throne is (illegally) occupied, capture still requires 3 attackers on non-throne sides.
+        {
+          const b = emptyBoard();
+          b[CENTER][CENTER] = Piece.ATTACKER; // occupied throne should not help capture
+          b[CENTER][CENTER + 1] = Piece.KING;
+          b[CENTER - 1][CENTER + 1] = Piece.ATTACKER; // N
+          b[CENTER][CENTER + 2] = Piece.ATTACKER;     // E
+          // Missing S attacker.
+          if (maybeCaptureKing(b, [CENTER, CENTER + 1])) failures.push('king-adj-throne-throne-occupied-still-needs-3A');
+        }
+
         // King on throne: requires 4 attackers (hostile squares alone must not reduce requirement).
         {
           const b = emptyBoard();
@@ -2406,6 +2418,19 @@
             if (after[CENTER][CENTER + 1] !== Piece.KING) return false;
             const win = determineWin(after, { exitFortEnabled: false });
             return win == null;
+          }
+        },
+        {
+          name: 'Adjacent-to-throne: occupied throne does not count as capturing side',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            // (Illegal-ish) setup: throne occupied, king adjacent.
+            board[CENTER][CENTER] = Piece.ATTACKER;
+            board[CENTER][CENTER + 1] = Piece.KING;
+            board[CENTER - 1][CENTER + 1] = Piece.ATTACKER;
+            board[CENTER][CENTER + 2] = Piece.ATTACKER;
+            // Missing S attacker: should NOT capture.
+            return maybeCaptureKing(board, [CENTER, CENTER + 1]) === false;
           }
         },
         {
