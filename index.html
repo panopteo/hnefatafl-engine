@@ -1247,6 +1247,20 @@
           if (!maybeCaptureKing(b, [CENTER, CENTER + 1])) failures.push('king-adj-throne-3A-captures');
         }
 
+        // King on throne: requires 4 attackers (hostile squares alone must not reduce requirement).
+        {
+          const b = emptyBoard();
+          b[CENTER][CENTER] = Piece.KING;
+          // Only 3 attackers around.
+          b[CENTER - 1][CENTER] = Piece.ATTACKER;
+          b[CENTER + 1][CENTER] = Piece.ATTACKER;
+          b[CENTER][CENTER - 1] = Piece.ATTACKER;
+          if (maybeCaptureKing(b, [CENTER, CENTER])) failures.push('king-on-throne-3A-no-capture');
+          // Add 4th attacker => capture.
+          b[CENTER][CENTER + 1] = Piece.ATTACKER;
+          if (!maybeCaptureKing(b, [CENTER, CENTER])) failures.push('king-on-throne-4A-captures');
+        }
+
         return { ok: failures.length === 0, failures };
       }
 
@@ -2480,6 +2494,23 @@
             board[CENTER + 1][CENTER] = Piece.ATTACKER;
             const result = determineWin(board, { exitFortEnabled: false });
             return result?.winner === Side.ATTACKERS;
+          }
+        },
+        {
+          name: 'King on throne requires 4 attackers (3 attackers is not enough)',
+          run: () => {
+            const board = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+            board[CENTER][CENTER] = Piece.KING;
+            board[CENTER - 1][CENTER] = Piece.ATTACKER;
+            board[CENTER + 1][CENTER] = Piece.ATTACKER;
+            board[CENTER][CENTER - 1] = Piece.ATTACKER;
+            // Trigger capture evaluation.
+            board[5][4] = Piece.ATTACKER;
+            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
+            // King should remain.
+            if (after[CENTER][CENTER] !== Piece.KING) return false;
+            const win = determineWin(after, { exitFortEnabled: false });
+            return win == null;
           }
         }
       ];
