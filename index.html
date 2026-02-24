@@ -2504,12 +2504,9 @@
             board[CENTER - 1][CENTER] = Piece.ATTACKER;
             board[CENTER + 1][CENTER] = Piece.ATTACKER;
             board[CENTER][CENTER - 1] = Piece.ATTACKER;
-            // Trigger capture evaluation.
-            board[5][4] = Piece.ATTACKER;
-            const after = simulateMove(board, { side: Side.ATTACKERS, from: [5, 4], to: [5, 5] });
-            // King should remain.
-            if (after[CENTER][CENTER] !== Piece.KING) return false;
-            const win = determineWin(after, { exitFortEnabled: false });
+            // With only 3 attackers, the king must not be capturable.
+            if (maybeCaptureKing(board, [CENTER, CENTER])) return false;
+            const win = determineWin(board, { exitFortEnabled: false });
             return win == null;
           }
         }
