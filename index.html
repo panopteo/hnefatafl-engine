@@ -2300,6 +2300,7 @@
           if (cell === Piece.KING) return 'K';
           return String(cell);
         };
+
         const parts = [];
         for (const [label, dr, dc] of dirs) {
           const nr = r + dr;
@@ -2311,7 +2312,27 @@
           const special = (coordKey(nr, nc) === throneKey) ? ' (throne)' : (isCorner(nr, nc) ? ' (corner)' : '');
           parts.push(`${label}=${fmt(state.board[nr][nc])}${special}`);
         }
-        return `King adjacency: ${parts.join(', ')}`;
+
+        const kingAdj = `King adjacency: ${parts.join(', ')}`;
+
+        // Extra capture-rule context (Copenhagen nuance): if king is adjacent to the throne,
+        // capture requires 3 attackers on the 3 non-throne sides.
+        const adjacentToThrone = Math.abs(r - CENTER) + Math.abs(c - CENTER) === 1;
+        if (!adjacentToThrone) return kingAdj;
+
+        const nonThrone = [];
+        for (const [label, dr, dc] of dirs) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (!isInside(nr, nc)) continue;
+          if (coordKey(nr, nc) === throneKey) continue;
+          nonThrone.push({ label, r: nr, c: nc, cell: state.board[nr][nc] });
+        }
+        const attackers = nonThrone.filter(x => x.cell === Piece.ATTACKER);
+        const detail = nonThrone.map(x => `${x.label}=${fmt(x.cell)}`).join(', ');
+        const ruleLine = `Adj-to-throne capture check: attackers on non-throne sides = ${attackers.length}/3 (${detail})`;
+
+        return `${kingAdj}\n${ruleLine}`;
       })();
 
       const report = [
