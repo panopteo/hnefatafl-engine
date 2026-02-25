@@ -81,6 +81,7 @@ function run() {
   }
 
   // scripts[0] is worker source (type=javascript/worker); scripts[1] is UI source.
+  const workerScript = scripts[0];
   const uiScript = scripts[1];
 
   class DummyWorker {
@@ -89,13 +90,51 @@ function run() {
       this.onerror = null;
     }
     postMessage() {
-      // No-op: regressions are pure and do not require engine worker responses.
+      // No-op: headless regressions run pure helpers and do not require engine searches.
     }
     terminate() {}
     addEventListener() {}
     removeEventListener() {}
   }
 
+  // --- Worker self-tests (rule parity guardrail) ---
+  {
+    const posted = [];
+    const workerSandbox = {
+      console,
+      setTimeout,
+      clearTimeout,
+      performance: { now: () => Date.now() },
+      crypto: { getRandomValues: (arr) => { for (let i = 0; i < arr.length; i++) arr[i] = (Math.random() * 256) | 0; return arr; } },
+      self: {
+        postMessage: (msg) => posted.push(msg),
+        onmessage: null
+      }
+    };
+    const workerCtx = vm.createContext(workerSandbox);
+    vm.runInContext(workerScript, workerCtx, { filename: 'index.html(worker)' });
+    if (typeof workerSandbox.self.onmessage !== 'function') {
+      console.error('Worker self-test failed: self.onmessage not installed');
+      process.exit(1);
+    }
+    workerSandbox.self.onmessage({ data: { type: 'SELF_TEST', id: 'node-regressions' } });
+    const resultMsg = posted.find(m => m && m.type === 'SELF_TEST_RESULT');
+    if (!resultMsg) {
+      console.error('Worker self-test failed: no SELF_TEST_RESULT posted');
+      process.exit(1);
+    }
+    if (resultMsg.error) {
+      console.error('Worker self-test failed:', resultMsg.error);
+      process.exit(1);
+    }
+    if (!resultMsg.payload || resultMsg.payload.ok !== true) {
+      const failures = resultMsg.payload?.failures?.length ? resultMsg.payload.failures.join('\n- ') : 'unknown';
+      console.error('Worker self-test failures:', '\n- ' + failures);
+      process.exit(1);
+    }
+  }
+
+  // --- UI regressions ---
   const sandbox = {
     console,
     setTimeout,
