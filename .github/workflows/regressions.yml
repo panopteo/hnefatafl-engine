@@ -1,0 +1,21 @@
+name: Regressions
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run headless regressions (includes worker SELF_TEST)
+        run: node tools/run-regressions.js
