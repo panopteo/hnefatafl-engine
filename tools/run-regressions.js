@@ -2,11 +2,13 @@
 /*
   Headless regression runner for hnefatafl-engine.
   - Evaluates the main UI script from index.html in a Node VM context.
-  - Stubs DOM/engineManager to avoid browser dependencies.
+  - Stubs DOM/Worker/URL/Blob/window to avoid browser dependencies.
   - Executes regressionScenarios() and reports failures.
 
   Usage:
     node tools/run-regressions.js
+    node tools/run-regressions.js --list
+    node tools/run-regressions.js --filter "Alex"
 */
 
 const fs = require('fs');
@@ -54,7 +56,23 @@ function makeDomStubs() {
   };
 }
 
+function parseArgs(argv) {
+  const args = { list: false, filter: null };
+  for (let i = 2; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--list') args.list = true;
+    else if (a === '--filter') args.filter = argv[++i] ?? '';
+    else {
+      console.error('Unknown arg:', a);
+      process.exit(2);
+    }
+  }
+  return args;
+}
+
 function run() {
+  const args = parseArgs(process.argv);
+
   const html = fs.readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
   const scripts = extractScripts(html);
   if (scripts.length < 2) {
@@ -93,6 +111,10 @@ function run() {
   // Browser code expects window.*
   sandbox.window = sandbox;
 
+  // Pass args into the VM context.
+  sandbox.__RUNREG_LIST = args.list;
+  sandbox.__RUNREG_FILTER = args.filter;
+
   const ctx = vm.createContext(sandbox);
 
   // Evaluate the UI script.
@@ -103,16 +125,34 @@ function run() {
     if (typeof regressionScenarios !== 'function') {
       return { ok: false, error: 'regressionScenarios not found' };
     }
+
     const scenarios = regressionScenarios();
     const failures = [];
-    for (const t of scenarios) {
+
+    // Optional args passed via global.
+    const __list = !!globalThis.__RUNREG_LIST;
+    const __filter = (typeof globalThis.__RUNREG_FILTER === 'string') ? globalThis.__RUNREG_FILTER : null;
+
+    const selected = __filter
+      ? scenarios.filter(t => String(t.name).toLowerCase().includes(__filter.toLowerCase()))
+      : scenarios;
+
+    if (__list) {
+      return { ok: true, list: scenarios.map(t => t.name), count: scenarios.length };
+    }
+
+    if (__filter && selected.length === 0) {
+      return { ok: false, error: 'No regressions match filter: ' + __filter };
+    }
+
+    for (const t of selected) {
       try {
         if (!t.run()) failures.push(t.name);
       } catch (e) {
         failures.push(t.name + ': ' + (e && e.message ? e.message : String(e)));
       }
     }
-    return { ok: failures.length === 0, failures, count: scenarios.length };
+    return { ok: failures.length === 0, failures, count: selected.length, total: scenarios.length };
   })()`, ctx);
 
   if (!result || result.ok !== true) {
@@ -121,7 +161,13 @@ function run() {
     process.exit(1);
   }
 
-  console.log(`OK: ${result.count} regressions passed`);
+  if (result.list) {
+    result.list.forEach(name => console.log(name));
+    return;
+  }
+
+  const total = (typeof result.total === 'number') ? `/${result.total}` : '';
+  console.log(`OK: ${result.count}${total} regressions passed`);
 }
 
 run();
