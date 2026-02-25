@@ -2049,6 +2049,44 @@
       const movedBoard = movePiece(state.board, from, to);
       state.idBoard[fr][fc] = null;
       state.idBoard[tr][tc] = movingId;
+
+      // Instrumentation: if a move evaluates a potential king capture, log the geometry.
+      const kingCaptureChecks = [];
+      for (const [dr, dc] of directions) {
+        const adjR = tr + dr;
+        const adjC = tc + dc;
+        if (!isInside(adjR, adjC)) continue;
+        if (movedBoard[adjR][adjC] !== Piece.KING) continue;
+
+        const kr = adjR;
+        const kc = adjC;
+        const adjacentToThrone = Math.abs(kr - CENTER) + Math.abs(kc - CENTER) === 1;
+        const fmt = (cell) => (cell === Piece.EMPTY ? 'empty' : cell);
+        const N = isInside(kr - 1, kc) ? `${fmt(movedBoard[kr - 1][kc])}${coordKey(kr - 1, kc) === throneKey ? '(throne)' : ''}` : 'offboard';
+        const S = isInside(kr + 1, kc) ? `${fmt(movedBoard[kr + 1][kc])}${coordKey(kr + 1, kc) === throneKey ? '(throne)' : ''}` : 'offboard';
+        const W = isInside(kr, kc - 1) ? `${fmt(movedBoard[kr][kc - 1])}${coordKey(kr, kc - 1) === throneKey ? '(throne)' : ''}` : 'offboard';
+        const E = isInside(kr, kc + 1) ? `${fmt(movedBoard[kr][kc + 1])}${coordKey(kr, kc + 1) === throneKey ? '(throne)' : ''}` : 'offboard';
+
+        let nonThroneA = null;
+        if (adjacentToThrone) {
+          const candidates = [
+            [kr - 1, kc],
+            [kr + 1, kc],
+            [kr, kc - 1],
+            [kr, kc + 1]
+          ].filter(([r, c]) => isInside(r, c) && coordKey(r, c) !== throneKey);
+          nonThroneA = candidates.filter(([r, c]) => movedBoard[r][c] === Piece.ATTACKER).length;
+        }
+
+        kingCaptureChecks.push({
+          king: notation([kr, kc]),
+          adjacentToThrone,
+          nonThroneAttackers: nonThroneA,
+          capture: maybeCaptureKing(movedBoard, [kr, kc]),
+          N, S, W, E
+        });
+      }
+
       const { board: afterCapture, captured } = captureEnemyPieces(movedBoard, to, side);
       captured.forEach(cap => {
         const capId = state.idBoard[cap.r][cap.c];
@@ -2069,6 +2107,7 @@
       state.moveHistory.push({
         ...move,
         captureSummary,
+        kingCaptureChecks,
         capturedPieces: captured.map(entry => ({ piece: entry.piece, location: notation([entry.r, entry.c]) }))
       });
       renderBoard(prevPositions);
@@ -2262,7 +2301,15 @@
           const caps = (move.capturedPieces && move.capturedPieces.length)
             ? ` [captured: ${move.capturedPieces.map(c => `${c.piece}@${c.location}`).join(', ')}]`
             : '';
-          return `${idx + 1}. ${move.side}: ${notation(move.from)}→${notation(move.to)}${move.captureSummary ? ' ' + move.captureSummary : ''}${caps}`;
+
+          const kingChecks = (move.kingCaptureChecks && move.kingCaptureChecks.length)
+            ? ` [king-capture-check: ${move.kingCaptureChecks.map(k => {
+              const adj = k.adjacentToThrone ? ` adjThrone nonThroneA=${k.nonThroneAttackers}/3` : '';
+              return `${k.king} capture=${k.capture ? 'YES' : 'no'}${adj} (N=${k.N},E=${k.E},W=${k.W},S=${k.S})`;
+            }).join(' | ')}]`
+            : '';
+
+          return `${idx + 1}. ${move.side}: ${notation(move.from)}→${notation(move.to)}${move.captureSummary ? ' ' + move.captureSummary : ''}${caps}${kingChecks}`;
         })
         .join('\n');
 
