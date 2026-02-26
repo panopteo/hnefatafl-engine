@@ -2726,6 +2726,61 @@
           }
         },
         {
+          name: 'UI flow: adjacent-to-throne capture ends game only with 3 attackers (positive case)',
+          run: () => {
+            let prevReq = null;
+            try {
+              prevReq = requestAIMove;
+              requestAIMove = () => {};
+
+              sideSelect.value = Side.ATTACKERS;
+              exitFortToggle.checked = false;
+              restartGame();
+
+              // Overwrite to a crafted position.
+              const b = Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
+              // King east of throne.
+              b[CENTER][CENTER] = Piece.EMPTY;
+              b[CENTER][CENTER + 1] = Piece.KING;
+              // Two attackers already placed on non-throne sides (N and E).
+              b[CENTER - 1][CENTER + 1] = Piece.ATTACKER;
+              b[CENTER][CENTER + 2] = Piece.ATTACKER;
+              // Third attacker will move into the S square to complete the 3-side capture.
+              b[CENTER + 1][CENTER + 3] = Piece.ATTACKER;
+
+              state.board = b;
+              state.idBoard = createIdBoard(b);
+              state.currentSide = Side.ATTACKERS;
+              state.playerSide = Side.ATTACKERS;
+              state.gameOver = false;
+              state.historyKeys = [repetitionKey(state.board)];
+              state.moveHistory = [];
+              state.lastMove = null;
+
+              renderBoard();
+              renderMoves();
+
+              executeMove({
+                side: Side.ATTACKERS,
+                from: [CENTER + 1, CENTER + 3],
+                to: [CENTER + 1, CENTER + 1]
+              });
+
+              if (!state.gameOver) return false;
+              const win = determineWin(state.board, { exitFortEnabled: false });
+              if (win?.winner !== Side.ATTACKERS) return false;
+              // Reason string differs slightly between UI/worker; only require it mentions king capture.
+              if (!String(win?.reason || '').toLowerCase().includes('king captured')) return false;
+              // Also ensure the king is actually off the board.
+              return locateKing(state.board) == null;
+            } catch (e) {
+              return false;
+            } finally {
+              if (prevReq) requestAIMove = prevReq;
+            }
+          }
+        },
+        {
           name: 'Repetition: defenders lose on 3x repetition',
           run: () => {
             const history = ['posA', 'posB', 'posA', 'posC', 'posA'];
