@@ -711,8 +711,8 @@
           return nonThroneAdj.length === 3 && nonThroneAdj.every(([nr, nc]) => board[nr][nc] === Piece.ATTACKER);
         }
 
-        // Default: king on throne needs 4 attackers; otherwise needs 4 hostile sides.
-        // Here we allow hostile squares (corners, empty throne) to count as capturing sides.
+        // Default: king capture requires 4 hostile sides.
+        // Hostile sides include attackers, corners, and (for non-adjacent cases) an empty throne.
         let hostileCount = 0;
         for (const [dr, dc] of directions) {
           const nr = r + dr;
@@ -727,10 +727,8 @@
             hostileCount += 1;
           }
         }
-        if (onThrone) {
-          return hostileCount >= 4;
-        }
-        return hostileCount >= 4;
+        const required = 4; // including on-throne (Copenhagen)
+        return hostileCount >= required;
       }
 
       function applyShieldwall(board, moverSide) {
@@ -1606,8 +1604,8 @@
         return nonThroneAdj.length === 3 && nonThroneAdj.every(([nr, nc]) => board[nr][nc] === Piece.ATTACKER);
       }
 
-      // Default: king on throne needs 4 attackers; otherwise needs 4 hostile sides.
-      // Here we allow hostile squares (corners, empty throne) to count as capturing sides.
+      // Default: king capture requires 4 hostile sides.
+      // Hostile sides include attackers, corners, and (for non-adjacent cases) an empty throne.
       let hostileCount = 0;
       for (const [dr, dc] of directions) {
         const nr = r + dr;
@@ -1622,10 +1620,8 @@
           hostileCount += 1;
         }
       }
-      if (onThrone) {
-        return hostileCount >= 4;
-      }
-      return hostileCount >= 4;
+      const required = 4; // including on-throne (Copenhagen)
+      return hostileCount >= required;
     }
 
     function applyShieldwall(board, moverSide) {
