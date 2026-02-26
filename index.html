@@ -1827,24 +1827,26 @@
     }
 
     function determineWin(board, config = DEFAULT_CONFIG) {
+      // Keep these reasons concise; the UI layer formats the final status line.
+      // (Matches the worker's determineWin() semantics.)
       const kingPos = locateKing(board);
       if (!kingPos) {
-        return { winner: Side.ATTACKERS, reason: 'King captured • attackers win' };
+        return { winner: Side.ATTACKERS, reason: 'King captured' };
       }
       if (isCorner(...kingPos)) {
-        return { winner: Side.DEFENDERS, reason: 'King reached a corner • defenders win' };
+        return { winner: Side.DEFENDERS, reason: 'King escaped' };
       }
       if (config.exitFortEnabled && defendersExitFort(board)) {
-        return { winner: Side.DEFENDERS, reason: 'Exit fort established • defenders win' };
+        return { winner: Side.DEFENDERS, reason: 'Exit fort' };
       }
       if (defendersEncircled(board)) {
-        return { winner: Side.ATTACKERS, reason: 'Defenders encircled • attackers win' };
+        return { winner: Side.ATTACKERS, reason: 'Encirclement' };
       }
       if (!hasLegalMove(board, Side.ATTACKERS)) {
-        return { winner: Side.DEFENDERS, reason: 'Attackers have no legal moves' };
+        return { winner: Side.DEFENDERS, reason: 'Attackers stalemated' };
       }
       if (!hasLegalMove(board, Side.DEFENDERS)) {
-        return { winner: Side.ATTACKERS, reason: 'Defenders have no legal moves' };
+        return { winner: Side.ATTACKERS, reason: 'Defenders stalemated' };
       }
       return null;
     }
@@ -2769,8 +2771,7 @@
               if (!state.gameOver) return false;
               const win = determineWin(state.board, { exitFortEnabled: false });
               if (win?.winner !== Side.ATTACKERS) return false;
-              // Reason string differs slightly between UI/worker; only require it mentions king capture.
-              if (!String(win?.reason || '').toLowerCase().includes('king captured')) return false;
+              if (win?.reason !== 'King captured') return false;
               // Also ensure the king is actually off the board.
               return locateKing(state.board) == null;
             } catch (e) {
