@@ -18,6 +18,61 @@ function extractScripts(html) {
   return [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
 }
 
+function stripComments(src) {
+  // Remove /* */ and // comments (best-effort; good enough for our embedded scripts).
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+function extractFunctionSource(src, fnName) {
+  const needle = `function ${fnName}`;
+  const start = src.indexOf(needle);
+  if (start < 0) return null;
+  const braceOpen = src.indexOf('{', start);
+  if (braceOpen < 0) return null;
+
+  // Brace matching with minimal string skipping.
+  let i = braceOpen;
+  let depth = 0;
+  let inStr = null;
+  let esc = false;
+  for (; i < src.length; i++) {
+    const ch = src[i];
+
+    if (inStr) {
+      if (esc) {
+        esc = false;
+        continue;
+      }
+      if (ch === '\\') {
+        esc = true;
+        continue;
+      }
+      if (ch === inStr) {
+        inStr = null;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inStr = ch;
+      continue;
+    }
+
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        const end = i + 1;
+        return src.slice(start, end);
+      }
+    }
+  }
+
+  return null;
+}
+
 function makeDomStubs() {
   const makeClassList = () => ({ add() {}, remove() {}, toggle() {} });
   const makeEl = () => {
@@ -105,6 +160,21 @@ function run() {
   // scripts[0] is worker source (type=javascript/worker); scripts[1] is UI source.
   const workerScript = scripts[0];
   const uiScript = scripts[1];
+
+  // --- Drift guardrail: critical rule helpers must match between worker and UI ---
+  {
+    const wk = extractFunctionSource(workerScript, 'maybeCaptureKing');
+    const ui = extractFunctionSource(uiScript, 'maybeCaptureKing');
+    if (!wk || !ui) {
+      console.error('Drift guardrail failed: could not extract maybeCaptureKing from worker/UI');
+      process.exit(1);
+    }
+    const norm = (s) => stripComments(s).replace(/\s+/g, '');
+    if (norm(wk) !== norm(ui)) {
+      console.error('Drift guardrail failed: worker and UI maybeCaptureKing differ');
+      process.exit(1);
+    }
+  }
 
   class DummyWorker {
     constructor() {
