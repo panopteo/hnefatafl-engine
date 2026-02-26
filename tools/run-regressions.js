@@ -20,21 +20,43 @@ function extractScripts(html) {
 
 function makeDomStubs() {
   const makeClassList = () => ({ add() {}, remove() {}, toggle() {} });
-  const makeEl = () => ({
-    textContent: '',
-    value: '',
-    checked: false,
-    style: {},
-    dataset: {},
-    classList: makeClassList(),
-    addEventListener() {},
-    removeEventListener() {},
-    appendChild() {},
-    removeChild() {},
-    setAttribute() {},
-    getAttribute() { return null; },
-    focus() {}
-  });
+  const makeEl = () => {
+    const el = {
+      textContent: '',
+      innerHTML: '',
+      value: '',
+      checked: false,
+      style: {},
+      dataset: {},
+      classList: makeClassList(),
+      parentElement: null,
+      addEventListener() {},
+      removeEventListener() {},
+      appendChild(child) {
+        if (child && typeof child === 'object') child.parentElement = el;
+      },
+      append(...children) {
+        for (const child of children) {
+          if (child && typeof child === 'object') child.parentElement = el;
+        }
+      },
+      removeChild(child) {
+        if (child && typeof child === 'object') child.parentElement = null;
+      },
+      remove() {
+        if (el.parentElement && typeof el.parentElement.removeChild === 'function') {
+          el.parentElement.removeChild(el);
+        }
+        el.parentElement = null;
+      },
+      setAttribute() {},
+      getAttribute() { return null; },
+      focus() {},
+      getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; },
+      animate() { return { finished: Promise.resolve(), cancel() {} }; }
+    };
+    return el;
+  };
 
   return {
     document: {

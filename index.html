@@ -2637,6 +2637,51 @@
           }
         },
         {
+          name: 'UI flow: executeMove ply-13 sequence does not end game (I7→G7)',
+          run: () => {
+            let prevReq = null;
+            try {
+              // Prevent the UI loop from trying to request an AI move in headless mode.
+              prevReq = requestAIMove;
+              requestAIMove = () => {};
+
+              sideSelect.value = Side.ATTACKERS;
+              exitFortToggle.checked = false;
+              restartGame();
+
+              const steps = [
+                { side: Side.ATTACKERS, from: 'D11', to: 'D10' },
+                { side: Side.DEFENDERS, from: 'H6', to: 'H9' },
+                { side: Side.ATTACKERS, from: 'H11', to: 'H10' },
+                { side: Side.DEFENDERS, from: 'F8', to: 'H8' },
+                { side: Side.ATTACKERS, from: 'E11', to: 'E10' },
+                { side: Side.DEFENDERS, from: 'G7', to: 'G10' },
+                { side: Side.ATTACKERS, from: 'F11', to: 'E11' },
+                { side: Side.DEFENDERS, from: 'F7', to: 'I7' },
+                { side: Side.ATTACKERS, from: 'F10', to: 'F8' },
+                { side: Side.DEFENDERS, from: 'I7', to: 'I10' },
+                { side: Side.ATTACKERS, from: 'K7', to: 'I7' },
+                { side: Side.DEFENDERS, from: 'F6', to: 'F7' },
+                { side: Side.ATTACKERS, from: 'I7', to: 'G7' }
+              ];
+
+              for (const s of steps) {
+                executeMove({ side: s.side, from: parseNotation(s.from), to: parseNotation(s.to) });
+                if (state.gameOver) break;
+              }
+
+              if (state.gameOver) return false;
+              const [kr, kc] = parseNotation('F7');
+              if (state.board[kr][kc] !== Piece.KING) return false;
+              return true;
+            } catch (e) {
+              return false;
+            } finally {
+              if (prevReq) requestAIMove = prevReq;
+            }
+          }
+        },
+        {
           name: 'Repetition: defenders lose on 3x repetition',
           run: () => {
             const history = ['posA', 'posB', 'posA', 'posC', 'posA'];
