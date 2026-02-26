@@ -2673,6 +2673,22 @@
               if (state.gameOver) return false;
               const [kr, kc] = parseNotation('F7');
               if (state.board[kr][kc] !== Piece.KING) return false;
+
+              // Strong assertion: the last move should have recorded a king-capture check
+              // with the exact reported geometry, and capture must be false.
+              const last = state.moveHistory[state.moveHistory.length - 1];
+              if (!last) return false;
+              const checks = Array.isArray(last.kingCaptureChecks) ? last.kingCaptureChecks : [];
+              const checkF7 = checks.find(x => x && x.king === 'F7');
+              if (!checkF7) return false;
+              if (checkF7.adjacentToThrone !== true) return false;
+              if (checkF7.capture !== false) return false;
+              // Reported neighbors at time of evaluation: N=A, E=A, W=D, S=empty throne.
+              if (!String(checkF7.N).startsWith('A')) return false;
+              if (!String(checkF7.E).startsWith('A')) return false;
+              if (!String(checkF7.W).startsWith('D')) return false;
+              if (!String(checkF7.S).startsWith('empty') || !String(checkF7.S).includes('(throne)')) return false;
+
               return true;
             } catch (e) {
               return false;
