@@ -1211,15 +1211,47 @@
         const emptyBoard = () => Array.from({ length: SIZE }, () => Array(SIZE).fill(Piece.EMPTY));
 
         // Adjacent-to-throne king capture requires 3 attackers on non-throne sides.
-        // Case: king east of throne; N/E attackers; S=empty; W=throne empty => MUST NOT capture.
+        // Test all 4 adjacency orientations (king N/E/S/W of throne).
         {
-          const b = emptyBoard();
-          b[CENTER][CENTER] = Piece.EMPTY; // throne
-          b[CENTER][CENTER + 1] = Piece.KING;
-          b[CENTER - 1][CENTER + 1] = Piece.ATTACKER; // N
-          b[CENTER][CENTER + 2] = Piece.ATTACKER;     // E
-          // S empty, W is throne (empty)
-          if (maybeCaptureKing(b, [CENTER, CENTER + 1])) failures.push('king-adj-throne-2A-no-capture');
+          const cases = [
+            { name: 'E', king: [CENTER, CENTER + 1], throneSide: [CENTER, CENTER] },
+            { name: 'W', king: [CENTER, CENTER - 1], throneSide: [CENTER, CENTER] },
+            { name: 'N', king: [CENTER - 1, CENTER], throneSide: [CENTER, CENTER] },
+            { name: 'S', king: [CENTER + 1, CENTER], throneSide: [CENTER, CENTER] }
+          ];
+
+          const adj = (r, c) => [
+            [r - 1, c],
+            [r + 1, c],
+            [r, c - 1],
+            [r, c + 1]
+          ].filter(([ar, ac]) => isInside(ar, ac));
+
+          for (const cs of cases) {
+            // 2 attackers + empty throne on the 3rd non-throne side missing => MUST NOT capture.
+            {
+              const b = emptyBoard();
+              b[CENTER][CENTER] = Piece.EMPTY;
+              const [kr, kc] = cs.king;
+              b[kr][kc] = Piece.KING;
+              const nonThrone = adj(kr, kc).filter(([ar, ac]) => coordKey(ar, ac) !== throneKey);
+              // Put attackers on first two non-throne sides; leave third empty.
+              b[nonThrone[0][0]][nonThrone[0][1]] = Piece.ATTACKER;
+              b[nonThrone[1][0]][nonThrone[1][1]] = Piece.ATTACKER;
+              if (maybeCaptureKing(b, [kr, kc])) failures.push(`king-adj-throne-2A-no-capture-${cs.name}`);
+            }
+
+            // 3 attackers on all non-throne sides => capture.
+            {
+              const b = emptyBoard();
+              b[CENTER][CENTER] = Piece.EMPTY;
+              const [kr, kc] = cs.king;
+              b[kr][kc] = Piece.KING;
+              const nonThrone = adj(kr, kc).filter(([ar, ac]) => coordKey(ar, ac) !== throneKey);
+              for (const [ar, ac] of nonThrone) b[ar][ac] = Piece.ATTACKER;
+              if (!maybeCaptureKing(b, [kr, kc])) failures.push(`king-adj-throne-3A-captures-${cs.name}`);
+            }
+          }
         }
 
         // Exact Alex bug geometry orientation (as asserted in UI regression):
